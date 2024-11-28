@@ -303,13 +303,13 @@ func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
 	loginID := base64.RawURLEncoding.EncodeToString(randBytes(16))
 	now := time.Now()
 
-	l := &passkeyLogin{
+	l := &login{
 		id:        loginID,
 		username:  req.Username,
 		challenge: challenge,
 		createdAt: now,
 	}
-	if err := s.storage.insertPasskeyLogin(r.Context(), l); err != nil {
+	if err := s.storage.insertLogin(r.Context(), l); err != nil {
 		http.Error(w, "Creating login: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -337,7 +337,7 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No login ID provided: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	l, err := s.storage.getPasskeyLogin(r.Context(), c.Value)
+	l, err := s.storage.getLogin(r.Context(), c.Value)
 	if err != nil {
 		http.Error(w, "Get passkey login: "+err.Error(), http.StatusBadRequest)
 		return
@@ -426,14 +426,14 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 	userID := randBytes(16)
 
 	now := time.Now()
-	reg := &passkeyRegistration{
+	reg := &registration{
 		id:        registrationID,
 		username:  req.Username,
 		userID:    userID,
 		challenge: challenge,
 		createdAt: now,
 	}
-	if err := s.storage.insertPasskeyRegistration(r.Context(), reg); err != nil {
+	if err := s.storage.insertRegistration(r.Context(), reg); err != nil {
 		http.Error(w, "Creating registration: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -459,7 +459,7 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 		http.Error(w, "No registration ID provided: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	reg, err := s.storage.getPasskeyRegistration(r.Context(), c.Value)
+	reg, err := s.storage.getRegistration(r.Context(), c.Value)
 	if err != nil {
 		http.Error(w, "Get passkey registration: "+err.Error(), http.StatusBadRequest)
 		return

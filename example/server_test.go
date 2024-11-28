@@ -98,14 +98,14 @@ func TestRegistrationFinish(t *testing.T) {
 		t.Fatalf("Decoding challenge: %v", err)
 	}
 
-	reg := &passkeyRegistration{
+	reg := &registration{
 		id:        "testregistrationid",
 		username:  "testuser",
 		userID:    []byte("testuserid"),
 		challenge: challenge,
 		createdAt: time.Now(),
 	}
-	if err := s.storage.insertPasskeyRegistration(ctx, reg); err != nil {
+	if err := s.storage.insertRegistration(ctx, reg); err != nil {
 		t.Fatalf("Inserting passkey failed: %v", err)
 	}
 

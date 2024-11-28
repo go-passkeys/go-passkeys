@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS passkeys (
 );
 
 -- Inflight attempts to register a new account with the server.
-CREATE TABLE IF NOT EXISTS passkey_registrations (
+CREATE TABLE IF NOT EXISTS registrations (
 	registration_id STRING NOT NULL,
 	username        STRING NOT NULL,
 	user_id         BLOB NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS passkey_registrations (
 );
 
 -- Inflight attempts to login to the server.
-CREATE TABLE IF NOT EXISTS passkey_logins (
+CREATE TABLE IF NOT EXISTS logins (
 	login_id   STRING NOT NULL,
 	username   STRING NOT NULL,
 	challenge  BLOB NOT NULL,
@@ -135,12 +135,12 @@ func (s *storage) gc() error {
 
 	t := now().Add(-time.Hour).UnixMicro()
 	if _, err := s.db.Exec(`
-		DELETE FROM passkey_registrations
+		DELETE FROM registrations
 		WHERE created_at < ?`, t); err != nil {
 		return fmt.Errorf("deleting old registrations: %v", err)
 	}
 	if _, err := s.db.Exec(`
-		DELETE FROM passkey_logins
+		DELETE FROM logins
 		WHERE created_at < ?`, t); err != nil {
 		return fmt.Errorf("deleting old logins: %v", err)
 	}
@@ -303,18 +303,18 @@ func (s *storage) getSession(ctx context.Context, id string) (*session, bool, er
 	return ses, true, nil
 }
 
-// passkeyLogin is an attempt to login.
-type passkeyLogin struct {
+// login is an attempt to login.
+type login struct {
 	id        string
 	username  string
 	challenge []byte
 	createdAt time.Time
 }
 
-// insertPasskeyLogin creates a database record for the login attempt.
-func (s *storage) insertPasskeyLogin(ctx context.Context, l *passkeyLogin) error {
+// insertLogin creates a database record for the login attempt.
+func (s *storage) insertLogin(ctx context.Context, l *login) error {
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO passkey_logins
+		`INSERT INTO logins
 		(login_id, username, challenge, created_at)
 		VALUES
 		(?, ?, ?, ?)`,
@@ -324,28 +324,28 @@ func (s *storage) insertPasskeyLogin(ctx context.Context, l *passkeyLogin) error
 	return nil
 }
 
-// getPasskeyLogin retreives a login attempt by ID, then immediately deletes
+// getLogin retreives a login attempt by ID, then immediately deletes
 // the record. The read-once logic is to avoid any issues with duplicate logins
 // or having to reasoning about similar shenanigans.
-func (s *storage) getPasskeyLogin(ctx context.Context, id string) (*passkeyLogin, error) {
+func (s *storage) getLogin(ctx context.Context, id string) (*login, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %v", err)
 	}
 	defer tx.Rollback()
 
-	l := &passkeyLogin{id: id}
+	l := &login{id: id}
 	var createdAt int64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT username, challenge, created_at
-		FROM passkey_logins
+		FROM logins
 		WHERE login_id = ?`, id).
 		Scan(&l.username, &l.challenge, &createdAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
 	l.createdAt = time.UnixMicro(createdAt)
 
-	result, err := tx.ExecContext(ctx, `DELETE FROM passkey_logins WHERE login_id = ?`, id)
+	result, err := tx.ExecContext(ctx, `DELETE FROM logins WHERE login_id = ?`, id)
 	if err != nil {
 		return nil, fmt.Errorf("deleting login record: %v", err)
 	}
@@ -362,9 +362,9 @@ func (s *storage) getPasskeyLogin(ctx context.Context, id string) (*passkeyLogin
 	return l, nil
 }
 
-// passkeyRegistration is an attempt to register an account, with associated
+// registration is an attempt to register an account, with associated
 // passkey attestation challenge.
-type passkeyRegistration struct {
+type registration struct {
 	id        string
 	username  string
 	userID    []byte
@@ -372,10 +372,10 @@ type passkeyRegistration struct {
 	createdAt time.Time
 }
 
-// insertPasskeyRegistration persists the registration attempt to the database.
-func (s *storage) insertPasskeyRegistration(ctx context.Context, p *passkeyRegistration) error {
+// insertRegistration persists the registration attempt to the database.
+func (s *storage) insertRegistration(ctx context.Context, p *registration) error {
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO passkey_registrations
+		INSERT INTO registrations
 		(registration_id, username, user_id, challenge, created_at)
 		VALUES
 		(?, ?, ?, ?, ?)`,
@@ -388,25 +388,25 @@ func (s *storage) insertPasskeyRegistration(ctx context.Context, p *passkeyRegis
 // getPasskeyLogin retreives a registration attempt by ID, then immediately
 // deletes the record. The read-once logic is to avoid any issues with duplicate
 // registrations or having to reasoning about similar shenanigans.
-func (s *storage) getPasskeyRegistration(ctx context.Context, id string) (*passkeyRegistration, error) {
+func (s *storage) getRegistration(ctx context.Context, id string) (*registration, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %v", err)
 	}
 	defer tx.Rollback()
 
-	p := &passkeyRegistration{id: id}
+	p := &registration{id: id}
 	var createdAt int64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT username, user_id, challenge, created_at
-		FROM passkey_registrations
+		FROM registrations
 		WHERE registration_id = ?`, id).
 		Scan(&p.username, &p.userID, &p.challenge, &createdAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
 	p.createdAt = time.UnixMicro(createdAt)
 
-	result, err := tx.ExecContext(ctx, `DELETE FROM passkey_registrations WHERE registration_id = ?`, id)
+	result, err := tx.ExecContext(ctx, `DELETE FROM registrations WHERE registration_id = ?`, id)
 	if err != nil {
 		return nil, fmt.Errorf("deleting registration: %v", err)
 	}

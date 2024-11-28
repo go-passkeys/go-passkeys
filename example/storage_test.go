@@ -135,22 +135,22 @@ func TestStorageSession(t *testing.T) {
 	}
 }
 
-func TestStoragePasskeyRegistration(t *testing.T) {
+func TestStorageRegistration(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStorage(t)
 
 	now := time.Now().Round(time.Microsecond)
-	want := &passkeyRegistration{
+	want := &registration{
 		id:        "testid",
 		username:  "testuser",
 		userID:    []byte("testuserid"),
 		challenge: []byte("testchallenge"),
 		createdAt: now,
 	}
-	if err := s.insertPasskeyRegistration(ctx, want); err != nil {
+	if err := s.insertRegistration(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey registration: %v", err)
 	}
-	got, err := s.getPasskeyRegistration(ctx, "testid")
+	got, err := s.getRegistration(ctx, "testid")
 	if err != nil {
 		t.Fatalf("Getting passkey registration: %v", err)
 	}
@@ -158,26 +158,26 @@ func TestStoragePasskeyRegistration(t *testing.T) {
 		t.Errorf("Getting passkey registration returned unexpected result (-want, +got): %s", diff)
 	}
 
-	if _, err := s.getPasskeyRegistration(ctx, "testid"); err == nil {
+	if _, err := s.getRegistration(ctx, "testid"); err == nil {
 		t.Errorf("Expected getting registration to delete row")
 	}
 }
 
-func TestStoragePasskeyLogin(t *testing.T) {
+func TestStorageLogin(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStorage(t)
 
 	now := time.Now().Round(time.Microsecond)
-	want := &passkeyLogin{
+	want := &login{
 		id:        "testid",
 		username:  "testuser",
 		challenge: []byte("testchallenge"),
 		createdAt: now,
 	}
-	if err := s.insertPasskeyLogin(ctx, want); err != nil {
+	if err := s.insertLogin(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey login: %v", err)
 	}
-	got, err := s.getPasskeyLogin(ctx, "testid")
+	got, err := s.getLogin(ctx, "testid")
 	if err != nil {
 		t.Fatalf("Getting passkey login: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestStoragePasskeyLogin(t *testing.T) {
 		t.Errorf("Getting passkey login returned unexpected result (-want, +got): %s", diff)
 	}
 
-	if _, err := s.getPasskeyLogin(ctx, "testid"); err == nil {
+	if _, err := s.getLogin(ctx, "testid"); err == nil {
 		t.Errorf("Expected getting login to delete row")
 	}
 }
