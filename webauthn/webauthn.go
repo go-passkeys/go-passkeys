@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -333,12 +334,32 @@ type Flags byte
 
 // https://www.w3.org/TR/webauthn-3/#concept-user-present
 func (f Flags) UserPresent() bool {
-	return (byte(f) & 0x1) != 0
+	return (byte(f) & 1) != 0
 }
 
 // https://www.w3.org/TR/webauthn-3/#concept-user-verified
 func (f Flags) UserVerified() bool {
-	return (byte(f) & 0x4) != 0
+	return (byte(f) & (1 << 2)) != 0
+}
+
+// https://www.w3.org/TR/webauthn-3/#backup-eligible
+func (f Flags) BackupEligible() bool {
+	return (byte(f) & (1 << 3)) != 0
+}
+
+// https://www.w3.org/TR/webauthn-3/#backed-up
+func (f Flags) BackedUp() bool {
+	return (byte(f) & (1 << 4)) != 0
+}
+
+// https://www.w3.org/TR/webauthn-3/#attested-credential-data
+func (f Flags) AttestedCredentialData() bool {
+	return (byte(f) & (1 << 6)) != 0
+}
+
+// https://www.w3.org/TR/webauthn-3/#authdata-extensions
+func (f Flags) Extensions() bool {
+	return (byte(f) & (1 << 7)) != 0
 }
 
 func Verify(pub crypto.PublicKey, alg Algorithm, authData, clientDataJSON, sig []byte) error {
@@ -510,8 +531,22 @@ func parseAuthData(b []byte) (*AuthenticatorData, error) {
 	return &ad, nil
 }
 
+// Challenge is a wrapper on top of a WebAuthN challenge.
+//
+// Note that the specification recommends that "Challenges SHOULD therefore be
+// at least 16 bytes long."
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-cryptographic-challenges
 type Challenge []byte
 
+// Equal compares the challenge value against a set of bytes.
+func (c Challenge) Equal(b []byte) bool {
+	return subtle.ConstantTimeCompare([]byte(c), b) == 0
+}
+
+// UnmarshalJSON implements the challenge encoding used by clientDataJSON.
+//
+// https://www.w3.org/TR/webauthn-3/#dom-authenticatorresponse-clientdatajson
 func (c *Challenge) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
@@ -525,6 +560,14 @@ func (c *Challenge) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// ClientData holds information passed to the authenticator for both registration
+// and authentication.
+//
+// https://www.w3.org/TR/webauthn-3/#dictionary-client-data
+//
+// JSON tags are added to provide unmarshalling from the clientDataJSON format.
+//
+// https://www.w3.org/TR/webauthn-3/#dom-authenticatorresponse-clientdatajson
 type ClientData struct {
 	Type        string    `json:"type"`
 	Challenge   Challenge `json:"challenge"`
