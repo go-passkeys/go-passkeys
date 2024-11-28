@@ -26,7 +26,13 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- A child table holding user passkeys.
 CREATE TABLE IF NOT EXISTS passkeys (
-	username    STRING NOT NULL,
+	-- Name of the user this passkey is associated with.
+	username STRING NOT NULL,
+	-- User handle stored on the passkey and presented during authentication.
+	--
+	-- https://www.w3.org/TR/webauthn-3/#dom-authenticatorassertionresponse-userhandle
+	user_handle BLOB NOT NULL,
+
 	name        STRING NOT NULL,
 	passkey_id  BLOB NOT NULL,
 	public_key  BLOB NOT NULL,
@@ -37,14 +43,15 @@ CREATE TABLE IF NOT EXISTS passkeys (
     client_data_json   BLOB NOT NULL,
 
 	PRIMARY KEY(username),
-	FOREIGN KEY(username) REFERENCES users(username)
+	FOREIGN KEY(username) REFERENCES users(username),
+	UNIQUE(user_handle)
 );
 
 -- Inflight attempts to register a new account with the server.
 CREATE TABLE IF NOT EXISTS registrations (
 	registration_id STRING NOT NULL,
 	username        STRING NOT NULL,
-	user_id         BLOB NOT NULL,
+	user_handle     BLOB NOT NULL,
 	challenge       BLOB NOT NULL,
 
 	-- Unix microseconds. Used to clean up old registration attempts.
@@ -166,11 +173,12 @@ type user struct {
 // blobs, such as the attestation object and clientDataJSON that were returned
 // by the browser.
 type passkey struct {
-	username  string
-	name      string
-	passkeyID []byte
-	publicKey crypto.PublicKey
-	algorithm webauthn.Algorithm
+	username   string
+	name       string
+	userHandle []byte
+	passkeyID  []byte
+	publicKey  crypto.PublicKey
+	algorithm  webauthn.Algorithm
 
 	attestationObject []byte
 	clientDataJSON    []byte
@@ -197,10 +205,12 @@ func (s *storage) insertUser(ctx context.Context, u *user) error {
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO passkeys
-			(username, name, passkey_id, public_key, algorithm,
+			(username, name, passkey_id, user_handle,
+			public_key, algorithm,
 			attestation_object, client_data_json)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`, p.username, p.name, p.passkeyID, pub, int64(p.algorithm),
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, p.username, p.name, p.passkeyID, p.userHandle,
+			pub, int64(p.algorithm),
 			p.attestationObject, p.clientDataJSON); err != nil {
 			return fmt.Errorf("inserting passkey: %v", err)
 		}
@@ -232,7 +242,8 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT
-		name, passkey_id, public_key, algorithm,
+		name, passkey_id, user_handle,
+		public_key, algorithm,
 		attestation_object, client_data_json
 		FROM passkeys
 		WHERE username = ?`, username)
@@ -245,7 +256,7 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 			pubDER []byte
 			alg    int64
 		)
-		if err := rows.Scan(&p.name, &p.passkeyID, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON); err != nil {
+		if err := rows.Scan(&p.name, &p.passkeyID, &p.userHandle, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON); err != nil {
 			return nil, false, fmt.Errorf("scanning passkey row: %v", err)
 		}
 		pub, err := x509.ParsePKIXPublicKey(pubDER)
@@ -264,6 +275,35 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 		return nil, false, fmt.Errorf("commiting transaction: %v", err)
 	}
 	return u, true, nil
+}
+
+// getPasskey returns an individual passkey by user handle.
+func (s *storage) getPasskey(ctx context.Context, userHandle []byte) (*passkey, error) {
+	p := &passkey{
+		userHandle: userHandle,
+	}
+	var (
+		pubDER []byte
+		alg    int64
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+		username,name, passkey_id,
+		public_key, algorithm,
+		attestation_object, client_data_json
+		FROM passkeys
+		WHERE user_handle = ?`, userHandle).
+		Scan(&p.username, &p.name, &p.passkeyID, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON)
+	if err != nil {
+		return nil, fmt.Errorf("scanning passkey row: %v", err)
+	}
+	pub, err := x509.ParsePKIXPublicKey(pubDER)
+	if err != nil {
+		return nil, fmt.Errorf("parsing public key: %v", err)
+	}
+	p.publicKey = pub
+	p.algorithm = webauthn.Algorithm(alg)
+	return p, nil
 }
 
 // session represents an active, authenticated session by a particular user.
@@ -365,21 +405,21 @@ func (s *storage) getLogin(ctx context.Context, id string) (*login, error) {
 // registration is an attempt to register an account, with associated
 // passkey attestation challenge.
 type registration struct {
-	id        string
-	username  string
-	userID    []byte
-	challenge []byte
-	createdAt time.Time
+	id         string
+	username   string
+	userHandle []byte
+	challenge  []byte
+	createdAt  time.Time
 }
 
 // insertRegistration persists the registration attempt to the database.
 func (s *storage) insertRegistration(ctx context.Context, p *registration) error {
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO registrations
-		(registration_id, username, user_id, challenge, created_at)
+		(registration_id, username, user_handle, challenge, created_at)
 		VALUES
 		(?, ?, ?, ?, ?)`,
-		p.id, p.username, p.userID, p.challenge, p.createdAt.UnixMicro()); err != nil {
+		p.id, p.username, p.userHandle, p.challenge, p.createdAt.UnixMicro()); err != nil {
 		return fmt.Errorf("insert record: %v", err)
 	}
 	return nil
@@ -398,10 +438,10 @@ func (s *storage) getRegistration(ctx context.Context, id string) (*registration
 	p := &registration{id: id}
 	var createdAt int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT username, user_id, challenge, created_at
+		SELECT username, user_handle, challenge, created_at
 		FROM registrations
 		WHERE registration_id = ?`, id).
-		Scan(&p.username, &p.userID, &p.challenge, &createdAt); err != nil {
+		Scan(&p.username, &p.userHandle, &p.challenge, &createdAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
 	p.createdAt = time.UnixMicro(createdAt)

@@ -102,11 +102,11 @@ func TestRegistrationFinish(t *testing.T) {
 	}
 
 	reg := &registration{
-		id:        "testregistrationid",
-		username:  "testuser",
-		userID:    []byte("testuserid"),
-		challenge: challenge,
-		createdAt: time.Now(),
+		id:         "testregistrationid",
+		username:   "testuser",
+		userHandle: []byte("testuserid"),
+		challenge:  challenge,
+		createdAt:  time.Now(),
 	}
 	if err := s.storage.insertRegistration(ctx, reg); err != nil {
 		t.Fatalf("Inserting passkey failed: %v", err)
@@ -157,6 +157,7 @@ func TestLoginStart(t *testing.T) {
 		passkeys: []*passkey{
 			{
 				username:          "testuser",
+				userHandle:        []byte("testuserhandle"),
 				name:              "testkey",
 				passkeyID:         []byte("testkeyid"),
 				publicKey:         priv.Public(),
@@ -224,6 +225,7 @@ func TestLoginFinish(t *testing.T) {
 		passkeys: []*passkey{
 			{
 				username:          "testuser",
+				userHandle:        []byte("testuserhandle"),
 				name:              "testkey",
 				passkeyID:         []byte("testkeyid"),
 				publicKey:         priv.Public(),

@@ -72,6 +72,7 @@ func TestStorageUser(t *testing.T) {
 			{
 				username:          "testuser",
 				name:              "my security key",
+				userHandle:        []byte("testuserhandle"),
 				passkeyID:         []byte("passkeyid"),
 				publicKey:         priv.Public(),
 				algorithm:         webauthn.ES256,
@@ -101,6 +102,15 @@ func TestStorageUser(t *testing.T) {
 	}
 	if ok {
 		t.Fatalf("Getting unknown user returned user unexpectedly")
+	}
+
+	gotP, err := s.getPasskey(ctx, []byte("testuserhandle"))
+	if err != nil {
+		t.Fatalf("Getting passkey: %v", err)
+	}
+	wantP := got.passkeys[0]
+	if diff := cmp.Diff(wantP, gotP, cmpOptAllowUnexported); diff != "" {
+		t.Errorf("Getting passkey returned unexpected diff (-want, +got): %s", diff)
 	}
 }
 
@@ -141,11 +151,11 @@ func TestStorageRegistration(t *testing.T) {
 
 	now := time.Now().Round(time.Microsecond)
 	want := &registration{
-		id:        "testid",
-		username:  "testuser",
-		userID:    []byte("testuserid"),
-		challenge: []byte("testchallenge"),
-		createdAt: now,
+		id:         "testid",
+		username:   "testuser",
+		userHandle: []byte("testuserid"),
+		challenge:  []byte("testchallenge"),
+		createdAt:  now,
 	}
 	if err := s.insertRegistration(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey registration: %v", err)

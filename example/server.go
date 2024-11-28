@@ -423,15 +423,15 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 	// https://www.w3.org/TR/webauthn-3/#sctn-cryptographic-challenges
 	challenge := randBytes(16)
 	registrationID := base64.RawURLEncoding.EncodeToString(randBytes(16))
-	userID := randBytes(16)
+	userHandle := randBytes(16)
 
 	now := time.Now()
 	reg := &registration{
-		id:        registrationID,
-		username:  req.Username,
-		userID:    userID,
-		challenge: challenge,
-		createdAt: now,
+		id:         registrationID,
+		username:   req.Username,
+		userHandle: userHandle,
+		challenge:  challenge,
+		createdAt:  now,
 	}
 	if err := s.storage.insertRegistration(r.Context(), reg); err != nil {
 		http.Error(w, "Creating registration: "+err.Error(), http.StatusInternalServerError)
@@ -443,7 +443,7 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 		UserID    []byte `json:"userID"`
 	}{
 		Challenge: challenge,
-		UserID:    userID,
+		UserID:    userHandle,
 	}
 
 	s.setCookie(w, r, cookieRegistrationID, registrationID, time.Hour)
@@ -498,6 +498,7 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 	p := &passkey{
 		username:          reg.username,
 		name:              "My passkey",
+		userHandle:        reg.userHandle,
 		passkeyID:         authData.CredID,
 		publicKey:         authData.PublicKey,
 		algorithm:         authData.Alg,
