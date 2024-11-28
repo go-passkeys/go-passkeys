@@ -16,6 +16,7 @@ import (
 )
 
 var schema = `
+-- Users tracked by the application.
 CREATE TABLE IF NOT EXISTS users (
 	username STRING NOT NULL,
 
@@ -23,25 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
 	UNIQUE(username)
 );
 
-CREATE TABLE IF NOT EXISTS passkey_registrations (
-	registration_id STRING NOT NULL,
-	username        STRING NOT NULL,
-	user_id         BLOB NOT NULL,
-	challenge       BLOB NOT NULL,
-	created_at      INTEGER NOT NULL,
-
-	PRIMARY KEY(registration_id)
-);
-
-CREATE TABLE IF NOT EXISTS passkey_logins (
-	login_id   STRING NOT NULL,
-	username   STRING NOT NULL,
-	challenge  BLOB NOT NULL,
-	created_at INTEGER NOT NULL,
-
-	PRIMARY KEY(login_id)
-);
-
+-- A child table holding user passkeys.
 CREATE TABLE IF NOT EXISTS passkeys (
 	username    STRING NOT NULL,
 	name        STRING NOT NULL,
@@ -57,9 +40,37 @@ CREATE TABLE IF NOT EXISTS passkeys (
 	FOREIGN KEY(username) REFERENCES users(username)
 );
 
+-- Inflight attempts to register a new account with the server.
+CREATE TABLE IF NOT EXISTS passkey_registrations (
+	registration_id STRING NOT NULL,
+	username        STRING NOT NULL,
+	user_id         BLOB NOT NULL,
+	challenge       BLOB NOT NULL,
+
+	-- Unix microseconds. Used to clean up old registration attempts.
+	created_at INTEGER NOT NULL,
+
+	PRIMARY KEY(registration_id)
+);
+
+-- Inflight attempts to login to the server.
+CREATE TABLE IF NOT EXISTS passkey_logins (
+	login_id   STRING NOT NULL,
+	username   STRING NOT NULL,
+	challenge  BLOB NOT NULL,
+
+	-- Unix microseconds. Used to clean up old login attempts.
+	created_at INTEGER NOT NULL,
+
+	PRIMARY KEY(login_id)
+);
+
+-- Active sessions where a user is authenticated.
 CREATE TABLE IF NOT EXISTS sessions (
 	session_id STRING NOT NULL,
 	username   STRING NOT NULL,
+
+	-- Unix microseconds. Session expire after 24 hours.
 	created_at INTEGER NOT NULL,
 
 	UNIQUE (session_id),
@@ -68,6 +79,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `
 
+// storage implements an SQLite3 database client.
 type storage struct {
 	db *sql.DB
 
@@ -76,6 +88,11 @@ type storage struct {
 	now func() time.Time
 }
 
+// newStorage initializes a connection to the provied database and attempts to
+// apply any schema changes, initializes a background routine for cleaning up
+// expired rows, and returns a connection.
+//
+// Callers are expected to call Close() on the returned storage object.
 func newStorage(ctx context.Context, path string) (*storage, error) {
 	db, err := sql.Open("sqlite3", "file:"+path)
 	if err != nil {
@@ -103,11 +120,13 @@ func newStorage(ctx context.Context, path string) (*storage, error) {
 	return s, nil
 }
 
+// Close cleans up all resources associated with the client.
 func (s *storage) Close() error {
 	s.close()
 	return s.db.Close()
 }
 
+// gc deletes any rows that have expired.
 func (s *storage) gc() error {
 	now := s.now
 	if now == nil {
@@ -135,12 +154,30 @@ func (s *storage) gc() error {
 	return nil
 }
 
+// user represents a user account. A username and a set of passkeys that can
+// be used to authenticate as that user.
 type user struct {
 	username string
 
 	passkeys []*passkey
 }
 
+// passkey holds various data associated with the key, including registration
+// blobs, such as the attestation object and clientDataJSON that were returned
+// by the browser.
+type passkey struct {
+	username  string
+	name      string
+	passkeyID []byte
+	publicKey crypto.PublicKey
+	algorithm webauthn.Algorithm
+
+	attestationObject []byte
+	clientDataJSON    []byte
+}
+
+// insertUser creates database records for the provided user and associated
+// passkeys.
 func (s *storage) insertUser(ctx context.Context, u *user) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -174,6 +211,8 @@ func (s *storage) insertUser(ctx context.Context, u *user) error {
 	return nil
 }
 
+// getUser returns the requested user by name and the set of passkeys that can
+// be used to login to their account.
 func (s *storage) getUser(ctx context.Context, username string) (*user, bool, error) {
 	u := &user{}
 	tx, err := s.db.Begin()
@@ -227,23 +266,14 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 	return u, true, nil
 }
 
-type passkey struct {
-	username  string
-	name      string
-	passkeyID []byte
-	publicKey crypto.PublicKey
-	algorithm webauthn.Algorithm
-
-	attestationObject []byte
-	clientDataJSON    []byte
-}
-
+// session represents an active, authenticated session by a particular user.
 type session struct {
 	id        string
 	username  string
 	createdAt time.Time
 }
 
+// insertSession stores a session record in the database.
 func (s *storage) insertSession(ctx context.Context, ses *session) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sessions
@@ -255,6 +285,8 @@ func (s *storage) insertSession(ctx context.Context, ses *session) error {
 	return nil
 }
 
+// getSession returns the session by ID. Or false if the ID was not found, for
+// example, because it expired.
 func (s *storage) getSession(ctx context.Context, id string) (*session, bool, error) {
 	ses := &session{id: id}
 	var createdAt int64
@@ -271,6 +303,7 @@ func (s *storage) getSession(ctx context.Context, id string) (*session, bool, er
 	return ses, true, nil
 }
 
+// passkeyLogin is an attempt to login.
 type passkeyLogin struct {
 	id        string
 	username  string
@@ -278,6 +311,7 @@ type passkeyLogin struct {
 	createdAt time.Time
 }
 
+// insertPasskeyLogin creates a database record for the login attempt.
 func (s *storage) insertPasskeyLogin(ctx context.Context, l *passkeyLogin) error {
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO passkey_logins
@@ -290,6 +324,9 @@ func (s *storage) insertPasskeyLogin(ctx context.Context, l *passkeyLogin) error
 	return nil
 }
 
+// getPasskeyLogin retreives a login attempt by ID, then immediately deletes
+// the record. The read-once logic is to avoid any issues with duplicate logins
+// or having to reasoning about similar shenanigans.
 func (s *storage) getPasskeyLogin(ctx context.Context, id string) (*passkeyLogin, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -325,6 +362,8 @@ func (s *storage) getPasskeyLogin(ctx context.Context, id string) (*passkeyLogin
 	return l, nil
 }
 
+// passkeyRegistration is an attempt to register an account, with associated
+// passkey attestation challenge.
 type passkeyRegistration struct {
 	id        string
 	username  string
@@ -333,6 +372,7 @@ type passkeyRegistration struct {
 	createdAt time.Time
 }
 
+// insertPasskeyRegistration persists the registration attempt to the database.
 func (s *storage) insertPasskeyRegistration(ctx context.Context, p *passkeyRegistration) error {
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO passkey_registrations
@@ -345,6 +385,9 @@ func (s *storage) insertPasskeyRegistration(ctx context.Context, p *passkeyRegis
 	return nil
 }
 
+// getPasskeyLogin retreives a registration attempt by ID, then immediately
+// deletes the record. The read-once logic is to avoid any issues with duplicate
+// registrations or having to reasoning about similar shenanigans.
 func (s *storage) getPasskeyRegistration(ctx context.Context, id string) (*passkeyRegistration, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

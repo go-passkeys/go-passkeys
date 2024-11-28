@@ -24,12 +24,6 @@ import (
 	"github.com/ericchiang/go-webauthn/webauthn"
 )
 
-const (
-	cookieSessionID      = "session.id"
-	cookieRegistrationID = "registration.id"
-	cookieLoginID        = "login.id"
-)
-
 func main() {
 	var (
 		addr   string
@@ -91,39 +85,64 @@ func getMetadataBLOB() (*webauthn.Metadata, error) {
 	return md, nil
 }
 
+// randBytes returns some number of cryptographically secure random bytes. This
+// is used for challenges and session IDs.
 func randBytes(size int) []byte {
 	b := make([]byte, size)
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		// Go 1.24 will start crashing the program on bad reads, so
+		// panic'ing here isn't problematic.
+		//
+		// https://github.com/golang/go/issues/66821
 		panic("Failed to read random bytes: " + err.Error())
 	}
 	return b
 }
 
+// Cookies used by the server. The values are purely random values that match
+// a database row.
+const (
+	cookieLoginID        = "login.id"
+	cookieRegistrationID = "registration.id"
+	cookieSessionID      = "session.id"
+)
+
+// Frontend assets that are statically compiled into the binary. Can optionally,
+// use the on-disk assets with the --watch flag.
+//
 //go:embed static
 var staticFSEmbed embed.FS
 
+// server is a WebAuthN example server, allowing users to register passkeys to
+// an account, and perform various actions, such as registering additional keys,
+// challenging existing keys, etc. All state is stored in an sqlite3 database to
+// persist across restarts.
 type server struct {
 	staticFS fs.FS
 	storage  *storage
 	metadata *webauthn.Metadata
 
-	once    sync.Once
+	once    sync.Once // Guards handler.
 	handler http.Handler
 }
 
+// ServerHTTP handles all HTTP requests by the server.
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Instead of a constructor, initialize the routing on first request.
 	s.once.Do(func() {
 		mux := http.NewServeMux()
 
+		// Handle basic HTTP requests by the browser.
 		mux.HandleFunc("GET /", s.handleIndex)
-		mux.HandleFunc("GET /login", s.handleLogin)
 		mux.HandleFunc("GET /logout", s.handleLogout)
 
+		// APIs for Javascript to query to drive the page.
 		mux.HandleFunc("POST /registration-start", s.handleRegistrationStart)
 		mux.HandleFunc("POST /registration-finish", s.handleRegistrationFinish)
 		mux.HandleFunc("POST /login-start", s.handleLoginStart)
 		mux.HandleFunc("POST /login-finish", s.handleLoginFinish)
 
+		// Static Javascript and CSS assets.
 		mux.HandleFunc("GET /js/main.js", func(w http.ResponseWriter, r *http.Request) {
 			http.ServeFileFS(w, r, s.staticFS, "static/main.js")
 		})
@@ -132,9 +151,13 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		s.handler = mux
 	})
+
 	s.handler.ServeHTTP(w, r)
 }
 
+// user returns the authenticated user for the request, or false if one can't be
+// found. Errors generally represent internal issues, and should be surfaced to
+// the end user, not just assumed that a user isn't logged in.
 func (s *server) user(r *http.Request) (*user, bool, error) {
 	c, err := r.Cookie(cookieSessionID)
 	if err != nil {
@@ -156,11 +179,12 @@ func (s *server) user(r *http.Request) (*user, bool, error) {
 	return u, ok, nil
 }
 
+// setCookie is a helper that sets a cookie to a provided value.
 func (s *server) setCookie(w http.ResponseWriter, r *http.Request, key, val string, exp time.Duration) {
 	c := &http.Cookie{
 		Name:     key,
 		Value:    val,
-		Secure:   r.TLS != nil,
+		Secure:   r.TLS != nil, // Attempt to detect if the request uses HTTPS.
 		HttpOnly: true,
 		Expires:  time.Now().Add(exp),
 		SameSite: http.SameSiteStrictMode,
@@ -168,6 +192,7 @@ func (s *server) setCookie(w http.ResponseWriter, r *http.Request, key, val stri
 	http.SetCookie(w, c)
 }
 
+// clearCookie instructs the client to delete a cookie.
 func (s *server) clearCookie(w http.ResponseWriter, r *http.Request, key string) {
 	c := &http.Cookie{
 		Name:     key,
@@ -178,7 +203,12 @@ func (s *server) clearCookie(w http.ResponseWriter, r *http.Request, key string)
 	http.SetCookie(w, c)
 }
 
+// handleIndex drives the two main HTML pages a user sees, either a request to
+// login or register an account, or their logged in account and associated
+// passkeys.
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	// Recompile every time to allow the --watch flag to work. In the future, only
+	// do this once if the embedded FS is used.
 	tmpl, err := template.ParseFS(s.staticFS, "static/*.tmpl")
 	if err != nil {
 		http.Error(w, "Parsing templates: "+err.Error(), http.StatusInternalServerError)
@@ -190,9 +220,9 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Fetching user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	buff := &bytes.Buffer{}
 	if ok {
+		// User is logged in. Display their keys back to them.
 		type userPasskeys struct {
 			Name      string
 			Algorithm string
@@ -220,12 +250,12 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			Username: u.username,
 			Passkeys: passkeys,
 		}
-
 		if err := tmpl.ExecuteTemplate(buff, "user.html.tmpl", data); err != nil {
 			http.Error(w, "Rendering template: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
+		// User isn't logged in. Display a page for them to login or register.
 		if err := tmpl.ExecuteTemplate(buff, "login.html.tmpl", nil); err != nil {
 			http.Error(w, "Rendering template: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -234,15 +264,15 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, buff)
 }
 
+// handleLogout clears the user's current session.
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.clearCookie(w, r, cookieSessionID)
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	http.ServeFileFS(w, r, s.staticFS, "static/login.html")
-}
-
+// handleLoginStart attempts to initiate a challenge against a user's security
+// keys. Because the user isn't logged in yet, the challenge requires a resident
+// key, and therefore doesn't present the set of key IDs back to the user.
 func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -283,6 +313,11 @@ func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Creating login: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Set the login cookie.
+	//
+	// TODO: ericchiang@ - share this expiry with the database instead of hardcoding
+	// here and in the storage layer.
+	s.setCookie(w, r, cookieLoginID, loginID, time.Hour)
 
 	resp := struct {
 		Challenge []byte `json:"challenge"`
@@ -290,11 +325,76 @@ func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
 		Challenge: challenge,
 	}
 
-	s.setCookie(w, r, cookieLoginID, loginID, time.Hour)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
+// handleLoginFinish processes a channel response from a passkey, attempting to
+// authenticate as the user specified in the login attempt.
+func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(cookieLoginID)
+	if err != nil {
+		http.Error(w, "No login ID provided: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	l, err := s.storage.getPasskeyLogin(r.Context(), c.Value)
+	if err != nil {
+		http.Error(w, "Get passkey login: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		AuthenticatorData []byte `json:"authenticatorData"`
+		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Signature         []byte `json:"signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	u, ok, err := s.storage.getUser(r.Context(), l.username)
+	if err != nil {
+		http.Error(w, "Looking up user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "User does not exist: "+l.username, http.StatusBadRequest)
+		return
+	}
+
+	// Attempt to compare the challenge against any key stored by the user. Note
+	// that neither the authenticator data or the client data JSON holds the key
+	// ID, so the best we can do is try each key.
+	var found bool
+	for _, pk := range u.passkeys {
+		if err := webauthn.Verify(pk.publicKey, pk.algorithm, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err == nil {
+			found = true
+		}
+	}
+	if !found {
+		http.Error(w, "Passkey not registered to account", http.StatusUnauthorized)
+		return
+	}
+
+	// User is authenticate, create a session and set a cookie.
+	sessionID := base64.RawURLEncoding.EncodeToString(randBytes(16))
+	ses := &session{
+		id:        sessionID,
+		username:  l.username,
+		createdAt: time.Now(),
+	}
+	if err := s.storage.insertSession(r.Context(), ses); err != nil {
+		http.Error(w, "Creating session: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// TODO: ericchiang@ - don't define the session expiry twice.
+	s.setCookie(w, r, cookieSessionID, sessionID, time.Hour*24)
+}
+
+// handleRegistrationStart begins the process of registering an account. This
+// verifies the username doesn't already exist, generates a registration
+// challenge, and returns the challenge and a cookie to the user.
 func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -351,63 +451,8 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
-	c, err := r.Cookie(cookieLoginID)
-	if err != nil {
-		http.Error(w, "No login ID provided: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	l, err := s.storage.getPasskeyLogin(r.Context(), c.Value)
-	if err != nil {
-		http.Error(w, "Get passkey login: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var req struct {
-		AuthenticatorData []byte `json:"authenticatorData"`
-		ClientDataJSON    []byte `json:"clientDataJSON"`
-		Signature         []byte `json:"signature"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	u, ok, err := s.storage.getUser(r.Context(), l.username)
-	if err != nil {
-		http.Error(w, "Looking up user: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "User does not exist: "+l.username, http.StatusBadRequest)
-		return
-	}
-
-	var found bool
-	for _, pk := range u.passkeys {
-		if err := webauthn.Verify(pk.publicKey, pk.algorithm, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err == nil {
-			found = true
-		}
-	}
-	if !found {
-		http.Error(w, "Passkey not registered to account", http.StatusUnauthorized)
-		return
-	}
-
-	sessionID := base64.RawURLEncoding.EncodeToString(randBytes(16))
-	ses := &session{
-		id:        sessionID,
-		username:  l.username,
-		createdAt: time.Now(),
-	}
-	if err := s.storage.insertSession(r.Context(), ses); err != nil {
-		http.Error(w, "Creating session: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	s.setCookie(w, r, cookieSessionID, sessionID, time.Hour*24)
-}
-
+// handleRegistrationFinish verifies the attestation data of the passkey
+// creation and creates an account if the data is valid.
 func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(cookieRegistrationID)
 	if err != nil {
