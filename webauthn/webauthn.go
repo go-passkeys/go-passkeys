@@ -362,6 +362,7 @@ func (f Flags) Extensions() bool {
 	return (byte(f) & (1 << 7)) != 0
 }
 
+// https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion
 func Verify(pub crypto.PublicKey, alg Algorithm, authData, clientDataJSON, sig []byte) error {
 	clientDataHash := sha256.Sum256(clientDataJSON)
 	data := append([]byte{}, authData...)
