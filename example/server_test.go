@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -120,7 +123,7 @@ func TestRegistrationFinish(t *testing.T) {
 	u, _ := url.Parse(srv.URL)
 	client.Jar.SetCookies(u, []*http.Cookie{
 		{
-			Name:  cookieRegistrationID,
+			Name:  "registration.id",
 			Value: "testregistrationid",
 		},
 	})
@@ -169,6 +172,115 @@ func TestLoginStart(t *testing.T) {
 
 	reqBody := strings.NewReader(`{"username":"testuser"}`)
 	req, err := http.NewRequest("POST", srv.URL+"/login-start", reqBody)
+	if err != nil {
+		t.Fatalf("Creating test request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, body)
+	}
+}
+
+func base64Decode(t *testing.T, s string) []byte {
+	t.Helper()
+
+	data, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		t.Fatalf("Decoding base64 string: %v", err)
+	}
+	return data
+}
+
+func base64URLDecode(t *testing.T, s string) []byte {
+	t.Helper()
+
+	data, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		t.Fatalf("Decoding base64 string: %v", err)
+	}
+	return data
+}
+
+func TestLoginFinish(t *testing.T) {
+	ctx := context.Background()
+	client, srv, s := newTestServer(t)
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Generating test key: %v", err)
+	}
+
+	u := &user{
+		username: "testuser",
+		passkeys: []*passkey{
+			{
+				username:          "testuser",
+				name:              "testkey",
+				passkeyID:         []byte("testkeyid"),
+				publicKey:         priv.Public(),
+				algorithm:         webauthn.ES256,
+				attestationObject: []byte("attestation"),
+				clientDataJSON:    []byte("{}"),
+			},
+		},
+	}
+	if err := s.storage.insertUser(ctx, u); err != nil {
+		t.Fatalf("Inserting test user: %v", err)
+	}
+
+	// Values taken from Google Password Manager.
+	challenge := base64URLDecode(t, "sl_2HSWtFzJAaauF3T9zBQ")
+	authenticatorData := base64Decode(t, "SZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2MdAAAAAA==")
+	clientDataJSON := base64Decode(t, "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoic2xfMkhTV3RGekpBYWF1RjNUOXpCUSIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MCIsImNyb3NzT3JpZ2luIjpmYWxzZX0=")
+
+	l := &login{
+		id:        "loginid",
+		username:  "testuser",
+		challenge: challenge,
+	}
+	if err := s.storage.insertLogin(ctx, l); err != nil {
+		t.Fatalf("Inserting login attempt: %v", err)
+	}
+
+	su, _ := url.Parse(srv.URL)
+	client.Jar.SetCookies(su, []*http.Cookie{
+		{
+			Name:  "login.id",
+			Value: "loginid",
+		},
+	})
+
+	clientDataHash := sha256.Sum256(clientDataJSON)
+
+	data := append([]byte{}, authenticatorData...)
+	data = append(data, clientDataHash[:]...)
+
+	hash := sha256.Sum256(data)
+	sig, err := ecdsa.SignASN1(rand.Reader, priv, hash[:])
+	if err != nil {
+		t.Fatalf("Generating signature: %v", err)
+	}
+
+	reqBody := struct {
+		AuthenticatorData []byte `json:"authenticatorData"`
+		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Signature         []byte `json:"signature"`
+	}{authenticatorData, clientDataJSON, sig}
+	reqBodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("Encoding request body: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", srv.URL+"/login-finish", bytes.NewReader(reqBodyBytes))
 	if err != nil {
 		t.Fatalf("Creating test request: %v", err)
 	}
