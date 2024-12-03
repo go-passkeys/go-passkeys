@@ -4,25 +4,27 @@
     {{ template "header.html.tmpl" }}
   </head>
   <body>
-	<h1>WebAuthN example app</h1>
-	<h2>Login</h2>
-    <p>Login to an account using a passkey.</p>
-    <div>
-      <input type="text" id="login_username" name="username" placeholder="Username" required/>
-	  <button type="button" onclick="appLogin()">Login</button>
-    </div>
-	<h2>Register</h2>
-    <p>Register an account with a passkey.</p>
-    <div>
-      <input type="text" id="register_username" name="username" placeholder="Username" required/>
-      <input type="text" id="register_passkey_name" name="passkey" placeholder="Passkey name" required/>
-	  <button type="button" onclick="appRegister()">Register</button>
-    </div>
-    <div id="error">
-     <span class="material-icons" onclick="appHideError()">
-      close
-     </span>
-     <p id="errortext"></p>
+    <div id="login">
+	  <h1>WebAuthN example app</h1>
+	  <h2>Login</h2>
+      <p>Login to an account using a passkey.</p>
+      <div>
+        <input type="text" id="login_username" name="username" placeholder="Username" required/>
+	    <button type="button" onclick="appLogin()">Login</button>
+      </div>
+	  <h2>Register</h2>
+      <p>Register an account with a passkey.</p>
+      <div>
+        <input type="text" id="register_username" name="username" placeholder="Username" required/>
+        <input type="text" id="register_passkey_name" name="passkey" placeholder="Passkey name" required/>
+	    <button type="button" onclick="appRegister()">Register</button>
+      </div>
+      <div id="error">
+       <span class="material-icons" onclick="appHideError()">
+        close
+       </span>
+       <p id="errortext"></p>
+      </div>
     </div>
   </body>
 </html>

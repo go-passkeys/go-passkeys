@@ -4,44 +4,46 @@
     {{ template "header.html.tmpl" }}
   </head>
   <body>
-	<h1>WebAuthN example app</h1>
-	<h2>Hello, {{.Username}}</h2>
-	<h2>Passkeys</h2>
-    <p>Passkeys associated with your account.</p>
-    {{ range .Passkeys }}
-    <table>
-      <tr>
-        <td>Name</td>
-        <td>{{ .Name }}</td>
-      </tr>
-      <tr>
-        <td>Algorithm</td>
-        <td>{{ .Algorithm }}</td>
-      </tr>
-      <tr>
-        <td>Public</td>
-        <td class="publickey">{{ .Public }}</td>
-      </tr>
-    </table>
-    {{ end }}
-	<h2>Add passkey</h2>
-    <p>Add another passkey to your account.</p>
-    <div>
-      <input type="text" id="add_passkey_name" name="passkey" placeholder="Passkey name" required/>
-	  <button type="button" onclick="appAddPasskey()">Add passkey</button>
-    </div>
-	<h2>Reauth</h2>
-    <p>Challenge your passkeys.</p>
-    <button type="button", onclick="appReauth()">Reauthenticate</button>
-	<h2>Logout</h2>
-    <a href="/logout">
-      <button>Logout</button>
-    </a>
-    <div id="error">
-     <span class="material-icons" onclick="appHideError()">
-      close
-     </span>
-     <p id="errortext"></p>
+    <div id="user">
+	  <h1>WebAuthN example app</h1>
+	  <h2>Hello, {{.Username}}</h2>
+	  <h2>Passkeys</h2>
+      <p>Passkeys associated with your account.</p>
+      {{ range .Passkeys }}
+      <table>
+        <tr>
+          <td>Name</td>
+          <td>{{ .Name }}</td>
+        </tr>
+        <tr>
+          <td>Algorithm</td>
+          <td>{{ .Algorithm }}</td>
+        </tr>
+        <tr>
+          <td>Public</td>
+          <td class="publickey">{{ .Public }}</td>
+        </tr>
+      </table>
+      {{ end }}
+	  <h2>Add passkey</h2>
+      <p>Add another passkey to your account.</p>
+      <div>
+        <input type="text" id="add_passkey_name" name="passkey" placeholder="Passkey name" required/>
+	    <button type="button" onclick="appAddPasskey()">Add passkey</button>
+      </div>
+	  <h2>Reauth</h2>
+      <p>Challenge your passkeys.</p>
+      <button type="button", onclick="appReauth()">Reauthenticate</button>
+	  <h2>Logout</h2>
+      <a href="/logout">
+        <button>Logout</button>
+      </a>
+      <div id="error">
+       <span class="material-icons" onclick="appHideError()">
+        close
+       </span>
+       <p id="errortext"></p>
+      </div>
     </div>
   </body>
 </html>

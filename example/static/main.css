@@ -1,3 +1,29 @@
+body {
+  font-family: "Roboto", sans-serif;
+}
+
+#login {
+  max-width: 30em;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1em;
+  padding-right: 1em;
+  padding-bottom: 2em;
+}
+
+#user {
+  max-width: 50em;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1em;
+  padding-right: 1em;
+  padding-bottom: 2em;
+}
+
+h1 {
+  text-align: center;
+}
+
 #error {
   padding: 1em;
   background-color: lightpink;
@@ -17,6 +43,10 @@ table {
 
 th {
 	text-align: left;
+    vertical-align: top;
+}
+
+td {
     vertical-align: top;
 }
 
@@ -53,14 +83,4 @@ button {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
   width: 100%;
-}
-
-body {
-  font-family: "Roboto", sans-serif;
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 30em;
-  padding-left: 1em;
-  padding-right: 1em;
-  padding-bottom: 2em;
 }
