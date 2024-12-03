@@ -73,6 +73,18 @@ CREATE TABLE IF NOT EXISTS logins (
 	PRIMARY KEY(login_id)
 );
 
+-- Inflight attempts to reauthenticate to the server.
+CREATE TABLE IF NOT EXISTS reauths (
+	reauth_id   STRING NOT NULL,
+	username   STRING NOT NULL,
+	challenge  BLOB NOT NULL,
+
+	-- Unix microseconds. Used to clean up old login attempts.
+	created_at INTEGER NOT NULL,
+
+	PRIMARY KEY(reauth_id)
+);
+
 -- Active sessions where a user is authenticated.
 CREATE TABLE IF NOT EXISTS sessions (
 	session_id STRING NOT NULL,
@@ -389,6 +401,65 @@ func (s *storage) getLogin(ctx context.Context, id string) (*login, error) {
 	result, err := tx.ExecContext(ctx, `DELETE FROM logins WHERE login_id = ?`, id)
 	if err != nil {
 		return nil, fmt.Errorf("deleting login record: %v", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("determining rows affected: %v", err)
+	}
+	if n == 0 {
+		return nil, fmt.Errorf("failed to delete row")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing transaction: %v", err)
+	}
+	return l, nil
+}
+
+// reauth is an attempt to reauth.
+type reauth struct {
+	id        string
+	username  string
+	challenge []byte
+	createdAt time.Time
+}
+
+// insertReauth creates a database record for the reauth attempt.
+func (s *storage) insertReauth(ctx context.Context, l *reauth) error {
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO reauths
+		(reauth_id, username, challenge, created_at)
+		VALUES
+		(?, ?, ?, ?)`,
+		l.id, l.username, l.challenge, l.createdAt.UnixMicro()); err != nil {
+		return fmt.Errorf("inserting reauth row: %v", err)
+	}
+	return nil
+}
+
+// getReauth retreives a reauth attempt by ID, then immediately deletes
+// the record. The read-once logic is to avoid any issues with duplicate reauths
+// or having to reasoning about similar shenanigans.
+func (s *storage) getReauth(ctx context.Context, id string) (*reauth, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	l := &reauth{id: id}
+	var createdAt int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT username, challenge, created_at
+		FROM reauths
+		WHERE reauth_id = ?`, id).
+		Scan(&l.username, &l.challenge, &createdAt); err != nil {
+		return nil, fmt.Errorf("reading row: %v", err)
+	}
+	l.createdAt = time.UnixMicro(createdAt)
+
+	result, err := tx.ExecContext(ctx, `DELETE FROM reauths WHERE reauth_id = ?`, id)
+	if err != nil {
+		return nil, fmt.Errorf("deleting reauth record: %v", err)
 	}
 	n, err := result.RowsAffected()
 	if err != nil {

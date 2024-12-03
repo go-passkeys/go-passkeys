@@ -301,3 +301,130 @@ func TestLoginFinish(t *testing.T) {
 		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, body)
 	}
 }
+
+func TestReauth(t *testing.T) {
+	ctx := context.Background()
+	client, srv, s := newTestServer(t)
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Generating test key: %v", err)
+	}
+
+	u := &user{
+		username: "testuser",
+		passkeys: []*passkey{
+			{
+				username:          "testuser",
+				userHandle:        []byte("testuserhandle"),
+				name:              "testkey",
+				passkeyID:         []byte("testkeyid"),
+				publicKey:         priv.Public(),
+				algorithm:         webauthn.ES256,
+				attestationObject: []byte("attestation"),
+				clientDataJSON:    []byte("{}"),
+			},
+		},
+	}
+	if err := s.storage.insertUser(ctx, u); err != nil {
+		t.Fatalf("Inserting test user: %v", err)
+	}
+
+	ses := &session{
+		id:        "sessionid",
+		username:  "testuser",
+		createdAt: time.Now(),
+	}
+	if err := s.storage.insertSession(ctx, ses); err != nil {
+		t.Fatalf("Inserting login attempt: %v", err)
+	}
+
+	su, _ := url.Parse(srv.URL)
+	client.Jar.SetCookies(su, []*http.Cookie{
+		{
+			Name:  "session.id",
+			Value: "sessionid",
+		},
+	})
+
+	req, err := http.NewRequest("POST", srv.URL+"/reauth-start", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("Creating test request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, body)
+	}
+
+	var respBody struct {
+		CredentialIDs [][]byte `json:"credentialIDs"`
+		Challenge     []byte   `json:"challenge"`
+	}
+	if err := json.Unmarshal(body, &respBody); err != nil {
+		t.Fatalf("Decoding response: %v", err)
+	}
+
+	authenticatorData := base64Decode(t, "SZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2MdAAAAAA==")
+
+	clientData := struct {
+		Type        string `json:"type"`
+		Challenge   string `json:"challenge"`
+		Origin      string `json:"origin"`
+		CrossOrigin bool   `json:"crossOrigin"`
+	}{
+		Type:      "webauthn.get",
+		Challenge: base64.RawURLEncoding.EncodeToString(respBody.Challenge),
+		Origin:    srv.URL,
+	}
+	clientDataJSON, err := json.Marshal(clientData)
+	if err != nil {
+		t.Fatalf("Encoding client data: %v", err)
+	}
+
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	data := append([]byte{}, authenticatorData...)
+	data = append(data, clientDataHash[:]...)
+	hash := sha256.Sum256(data)
+	sig, err := ecdsa.SignASN1(rand.Reader, priv, hash[:])
+	if err != nil {
+		t.Fatalf("Generating signature: %v", err)
+	}
+
+	finishReqBody := struct {
+		AuthenticatorData []byte `json:"authenticatorData"`
+		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Signature         []byte `json:"signature"`
+		UserHandle        []byte `json:"userHandle"`
+	}{authenticatorData, clientDataJSON, sig, []byte("testuserhandle")}
+	finishReqBodyBytes, err := json.Marshal(finishReqBody)
+	if err != nil {
+		t.Fatalf("Encoding request body: %v", err)
+	}
+
+	finishReq, err := http.NewRequest("POST", srv.URL+"/reauth-finish", bytes.NewReader(finishReqBodyBytes))
+	if err != nil {
+		t.Fatalf("Creating test request: %v", err)
+	}
+	finishResp, err := client.Do(finishReq)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer finishResp.Body.Close()
+
+	finishBody, err := io.ReadAll(finishResp.Body)
+	if err != nil {
+		t.Fatalf("Reading response body: %v", err)
+	}
+	if finishResp.StatusCode != http.StatusOK {
+		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, finishBody)
+	}
+}

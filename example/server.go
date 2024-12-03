@@ -103,6 +103,7 @@ func randBytes(size int) []byte {
 // a database row.
 const (
 	cookieLoginID        = "login.id"
+	cookieReauthID       = "reauth.id"
 	cookieRegistrationID = "registration.id"
 	cookieSessionID      = "session.id"
 )
@@ -141,6 +142,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mux.HandleFunc("POST /registration-finish", s.handleRegistrationFinish)
 		mux.HandleFunc("POST /login-start", s.handleLoginStart)
 		mux.HandleFunc("POST /login-finish", s.handleLoginFinish)
+		mux.HandleFunc("POST /reauth-start", s.handleReauthStart)
+		mux.HandleFunc("POST /reauth-finish", s.handleReauthFinish)
 
 		// Static Javascript and CSS assets.
 		mux.HandleFunc("GET /js/main.js", func(w http.ResponseWriter, r *http.Request) {
@@ -524,4 +527,103 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 	}
 
 	s.setCookie(w, r, cookieSessionID, sessionID, time.Hour*24)
+}
+
+// handleReauthStart is a second factor challenge against the set of passkeys
+// registered for a logged in account.
+func (s *server) handleReauthStart(w http.ResponseWriter, r *http.Request) {
+	u, ok, err := s.user(r)
+	if err != nil {
+		http.Error(w, "Fetching user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	challenge := randBytes(16)
+	reauthID := base64.RawURLEncoding.EncodeToString(randBytes(16))
+	now := time.Now()
+
+	re := &reauth{
+		id:        reauthID,
+		username:  u.username,
+		challenge: challenge,
+		createdAt: now,
+	}
+	if err := s.storage.insertReauth(r.Context(), re); err != nil {
+		http.Error(w, "Creating login: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.setCookie(w, r, cookieReauthID, reauthID, time.Hour)
+
+	var credIDs [][]byte
+	for _, pk := range u.passkeys {
+		credIDs = append(credIDs, pk.passkeyID)
+	}
+
+	resp := struct {
+		IDs       [][]byte `json:"credentialIDs"`
+		Challenge []byte   `json:"challenge"`
+	}{
+		IDs:       credIDs,
+		Challenge: challenge,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleReauthFinish verifies an second factor challenge against the currently
+// logged in account.
+func (s *server) handleReauthFinish(w http.ResponseWriter, r *http.Request) {
+	u, ok, err := s.user(r)
+	if err != nil {
+		http.Error(w, "Fetching user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	c, err := r.Cookie(cookieReauthID)
+	if err != nil {
+		http.Error(w, "No reauth ID provided: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	re, err := s.storage.getReauth(r.Context(), c.Value)
+	if err != nil {
+		http.Error(w, "Get reauth challenge: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		AuthenticatorData []byte `json:"authenticatorData"`
+		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Signature         []byte `json:"signature"`
+		UserHandle        []byte `json:"userHandle"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	p, err := s.storage.getPasskey(r.Context(), req.UserHandle)
+	if err != nil {
+		http.Error(w, "Looking up passkey: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if p.username != u.username {
+		http.Error(w, "Passkey not registered for user", http.StatusBadRequest)
+		return
+	}
+
+	if err := webauthn.Verify(p.publicKey, p.algorithm, re.challenge, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err != nil {
+		http.Error(w, "Verifying passkey: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	s.clearCookie(w, r, cookieReauthID)
 }

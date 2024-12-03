@@ -200,3 +200,30 @@ func TestStorageLogin(t *testing.T) {
 		t.Errorf("Expected getting login to delete row")
 	}
 }
+
+func TestStorageReauth(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStorage(t)
+
+	now := time.Now().Round(time.Microsecond)
+	want := &reauth{
+		id:        "testid",
+		username:  "testuser",
+		challenge: []byte("testchallenge"),
+		createdAt: now,
+	}
+	if err := s.insertReauth(ctx, want); err != nil {
+		t.Fatalf("Inserting passkey reauth: %v", err)
+	}
+	got, err := s.getReauth(ctx, "testid")
+	if err != nil {
+		t.Fatalf("Getting passkey reauth: %v", err)
+	}
+	if diff := cmp.Diff(want, got, cmpOptAllowUnexported); diff != "" {
+		t.Errorf("Getting passkey reauth returned unexpected result (-want, +got): %s", diff)
+	}
+
+	if _, err := s.getReauth(ctx, "testid"); err == nil {
+		t.Errorf("Expected getting reauth to delete row")
+	}
+}

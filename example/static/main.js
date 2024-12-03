@@ -162,3 +162,57 @@ window.appLogin= async function() {
         err(error);
     }
 }
+
+window.appReauth = async function() {
+	appHideError();
+    try {
+        const resp = await fetch("/reauth-start", {
+            method: "POST",
+            body: JSON.stringify({}),
+        });
+        if (!resp.ok) {
+            err(await resp.text());
+            return;
+        }
+
+        const body = await resp.json();
+        const challenge = Uint8Array.from(atob(body.challenge), c => c.charCodeAt(0));
+		const creds = body.credentialIDs.map((credID) => {
+			return {
+			    id: Uint8Array.from(atob(credID), c => c.charCodeAt(0)),
+			};
+		});
+		console.log(creds);
+
+		const cred = await navigator.credentials.get({
+           publicKey: {
+			   challenge: challenge,
+               rpId: "localhost",
+               userVerification: "required",
+			   allowcredentials: creds,
+		   },
+		});
+
+        const authenticatorData = btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData)));
+        const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
+        const signature = btoa(String.fromCharCode(...new Uint8Array(cred.response.signature)));
+        const userHandle = btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle)));
+
+        const finishResp = await fetch("/reauth-finish", {
+            method: "POST",
+            body: JSON.stringify({
+				authenticatorData: authenticatorData,
+				clientDataJSON: clientDataJSON,
+				signature: signature,
+				userHandle: userHandle,
+            }),
+        });
+        if (!finishResp.ok) {
+            err(await finishResp.text());
+            return;
+        }
+		alert("Reauthenticated successfully");
+    } catch (error) {
+        err(error);
+    }
+}

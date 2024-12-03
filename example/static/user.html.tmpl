@@ -32,12 +32,16 @@
     </div>
 	<h2>Reauth</h2>
     <p>Challenge your passkeys.</p>
-    <a href="/logout">
-      <button>Reauthenticate</button>
-    </a>
+    <button type="button", onclick="appReauth()">Reauthenticate</button>
 	<h2>Logout</h2>
     <a href="/logout">
       <button>Logout</button>
     </a>
+    <div id="error">
+     <span class="material-icons" onclick="appHideError()">
+      close
+     </span>
+     <p id="errortext"></p>
+    </div>
   </body>
 </html>
