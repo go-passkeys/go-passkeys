@@ -363,13 +363,22 @@ func (f Flags) Extensions() bool {
 }
 
 // https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion
-func Verify(pub crypto.PublicKey, alg Algorithm, authData, clientDataJSON, sig []byte) error {
+func Verify(pub crypto.PublicKey, alg Algorithm, challenge, authData, clientDataJSON, sig []byte) error {
 	clientDataHash := sha256.Sum256(clientDataJSON)
 	data := append([]byte{}, authData...)
 	data = append(data, clientDataHash[:]...)
 
 	if err := verifySignature(pub, alg, data, sig); err != nil {
 		return err
+	}
+	var clientData struct {
+		Challenge Challenge `json:"challenge"`
+	}
+	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
+		return fmt.Errorf("parsing client data JSON: %v", err)
+	}
+	if !clientData.Challenge.Equal(challenge) {
+		return fmt.Errorf("invalid challenge")
 	}
 	return nil
 }
@@ -542,7 +551,7 @@ type Challenge []byte
 
 // Equal compares the challenge value against a set of bytes.
 func (c Challenge) Equal(b []byte) bool {
-	return subtle.ConstantTimeCompare([]byte(c), b) == 0
+	return subtle.ConstantTimeCompare([]byte(c), b) == 1
 }
 
 // UnmarshalJSON implements the challenge encoding used by clientDataJSON.

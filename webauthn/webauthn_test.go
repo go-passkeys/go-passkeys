@@ -169,8 +169,9 @@ func TestVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parsing test key: %v", err)
 	}
+	challenge, _ := base64.RawURLEncoding.DecodeString("sl_2HSWtFzJAaauF3T9zBQ")
 
-	if err := Verify(pub, ES256, authData, clientDataJSON, sig); err != nil {
+	if err := Verify(pub, ES256, challenge, authData, clientDataJSON, sig); err != nil {
 		t.Errorf("Verifying signature: %v", err)
 	}
 }

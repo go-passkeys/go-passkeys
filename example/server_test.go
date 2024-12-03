@@ -276,7 +276,8 @@ func TestLoginFinish(t *testing.T) {
 		AuthenticatorData []byte `json:"authenticatorData"`
 		ClientDataJSON    []byte `json:"clientDataJSON"`
 		Signature         []byte `json:"signature"`
-	}{authenticatorData, clientDataJSON, sig}
+		UserHandle        []byte `json:"userHandle"`
+	}{authenticatorData, clientDataJSON, sig, []byte("testuserhandle")}
 	reqBodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		t.Fatalf("Encoding request body: %v", err)

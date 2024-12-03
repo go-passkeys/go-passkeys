@@ -137,17 +137,15 @@ window.appLogin= async function() {
         const authenticatorData = btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData)));
         const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
         const signature = btoa(String.fromCharCode(...new Uint8Array(cred.response.signature)));
-
-        console.log(authenticatorData);
-        console.log(clientDataJSON);
-        console.log(signature);
+        const userHandle = btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle)));
 
         const finishResp = await fetch("/login-finish", {
             method: "POST",
             body: JSON.stringify({
 				authenticatorData: authenticatorData,
-                clientDataJSON: clientDataJSON,
+				clientDataJSON: clientDataJSON,
 				signature: signature,
+				userHandle: userHandle,
             }),
         });
         if (!finishResp.ok) {

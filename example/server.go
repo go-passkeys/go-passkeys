@@ -347,33 +347,25 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		AuthenticatorData []byte `json:"authenticatorData"`
 		ClientDataJSON    []byte `json:"clientDataJSON"`
 		Signature         []byte `json:"signature"`
+		UserHandle        []byte `json:"userHandle"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	u, ok, err := s.storage.getUser(r.Context(), l.username)
+	p, err := s.storage.getPasskey(r.Context(), req.UserHandle)
 	if err != nil {
-		http.Error(w, "Looking up user: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Looking up passkey: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !ok {
-		http.Error(w, "User does not exist: "+l.username, http.StatusBadRequest)
+	if p.username != l.username {
+		http.Error(w, "Passkey not registered for user", http.StatusBadRequest)
 		return
 	}
 
-	// Attempt to compare the challenge against any key stored by the user. Note
-	// that neither the authenticator data or the client data JSON holds the key
-	// ID, so the best we can do is try each key.
-	var found bool
-	for _, pk := range u.passkeys {
-		if err := webauthn.Verify(pk.publicKey, pk.algorithm, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err == nil {
-			found = true
-		}
-	}
-	if !found {
-		http.Error(w, "Passkey not registered to account", http.StatusUnauthorized)
+	if err := webauthn.Verify(p.publicKey, p.algorithm, l.challenge, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err != nil {
+		http.Error(w, "Verifying passkey: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -381,7 +373,7 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 	sessionID := base64.RawURLEncoding.EncodeToString(randBytes(16))
 	ses := &session{
 		id:        sessionID,
-		username:  l.username,
+		username:  p.username,
 		createdAt: time.Now(),
 	}
 	if err := s.storage.insertSession(r.Context(), ses); err != nil {
