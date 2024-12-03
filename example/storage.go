@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS passkeys (
 CREATE TABLE IF NOT EXISTS registrations (
 	registration_id STRING NOT NULL,
 	username        STRING NOT NULL,
+	passkey_name    STRING NOT NULL,
 	user_handle     BLOB NOT NULL,
 	challenge       BLOB NOT NULL,
 
@@ -405,21 +406,22 @@ func (s *storage) getLogin(ctx context.Context, id string) (*login, error) {
 // registration is an attempt to register an account, with associated
 // passkey attestation challenge.
 type registration struct {
-	id         string
-	username   string
-	userHandle []byte
-	challenge  []byte
-	createdAt  time.Time
+	id          string
+	username    string
+	passkeyName string
+	userHandle  []byte
+	challenge   []byte
+	createdAt   time.Time
 }
 
 // insertRegistration persists the registration attempt to the database.
 func (s *storage) insertRegistration(ctx context.Context, p *registration) error {
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO registrations
-		(registration_id, username, user_handle, challenge, created_at)
+		(registration_id, username, passkey_name, user_handle, challenge, created_at)
 		VALUES
-		(?, ?, ?, ?, ?)`,
-		p.id, p.username, p.userHandle, p.challenge, p.createdAt.UnixMicro()); err != nil {
+		(?, ?, ?, ?, ?, ?)`,
+		p.id, p.username, p.passkeyName, p.userHandle, p.challenge, p.createdAt.UnixMicro()); err != nil {
 		return fmt.Errorf("insert record: %v", err)
 	}
 	return nil
@@ -438,10 +440,10 @@ func (s *storage) getRegistration(ctx context.Context, id string) (*registration
 	p := &registration{id: id}
 	var createdAt int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT username, user_handle, challenge, created_at
+		SELECT username, passkey_name, user_handle, challenge, created_at
 		FROM registrations
 		WHERE registration_id = ?`, id).
-		Scan(&p.username, &p.userHandle, &p.challenge, &createdAt); err != nil {
+		Scan(&p.username, &p.passkeyName, &p.userHandle, &p.challenge, &createdAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
 	p.createdAt = time.UnixMicro(createdAt)

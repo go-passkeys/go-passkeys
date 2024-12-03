@@ -34,6 +34,7 @@ window.appRegister = async function() {
             method: "POST",
             body: JSON.stringify({
                 username: username,
+				passkeyName: passkeyName,
             }),
         });
         if (!resp.ok) {

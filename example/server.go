@@ -389,7 +389,8 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 // challenge, and returns the challenge and a cookie to the user.
 func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
+		Username    string `json:"username"`
+		PasskeyName string `json:"passkeyName"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
@@ -397,6 +398,10 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 	}
 	if req.Username == "" {
 		http.Error(w, "No username provided", http.StatusBadRequest)
+		return
+	}
+	if req.PasskeyName == "" {
+		http.Error(w, "No passkey name provided", http.StatusBadRequest)
 		return
 	}
 
@@ -419,11 +424,12 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 
 	now := time.Now()
 	reg := &registration{
-		id:         registrationID,
-		username:   req.Username,
-		userHandle: userHandle,
-		challenge:  challenge,
-		createdAt:  now,
+		id:          registrationID,
+		username:    req.Username,
+		passkeyName: req.PasskeyName,
+		userHandle:  userHandle,
+		challenge:   challenge,
+		createdAt:   now,
 	}
 	if err := s.storage.insertRegistration(r.Context(), reg); err != nil {
 		http.Error(w, "Creating registration: "+err.Error(), http.StatusInternalServerError)
@@ -489,7 +495,7 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 
 	p := &passkey{
 		username:          reg.username,
-		name:              "My passkey",
+		name:              reg.passkeyName,
 		userHandle:        reg.userHandle,
 		passkeyID:         authData.CredID,
 		publicKey:         authData.PublicKey,

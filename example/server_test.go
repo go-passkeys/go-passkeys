@@ -45,7 +45,7 @@ func newTestServer(t *testing.T) (*http.Client, *httptest.Server, *server) {
 func TestRegistrationStart(t *testing.T) {
 	client, srv, _ := newTestServer(t)
 
-	reqBody := strings.NewReader(`{"username":"testuser"}`)
+	reqBody := strings.NewReader(`{"username":"testuser","passkeyName":"testkey"}`)
 	req, err := http.NewRequest("POST", srv.URL+"/registration-start", reqBody)
 	if err != nil {
 		t.Fatalf("Creating test request: %v", err)

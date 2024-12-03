@@ -151,11 +151,12 @@ func TestStorageRegistration(t *testing.T) {
 
 	now := time.Now().Round(time.Microsecond)
 	want := &registration{
-		id:         "testid",
-		username:   "testuser",
-		userHandle: []byte("testuserid"),
-		challenge:  []byte("testchallenge"),
-		createdAt:  now,
+		id:          "testid",
+		username:    "testuser",
+		passkeyName: "testkey",
+		userHandle:  []byte("testuserid"),
+		challenge:   []byte("testchallenge"),
+		createdAt:   now,
 	}
 	if err := s.insertRegistration(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey registration: %v", err)
