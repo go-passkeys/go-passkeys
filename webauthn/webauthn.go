@@ -213,8 +213,8 @@ func (o *AttestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 		return nil, fmt.Errorf("expected id-fido-gen-ce-aaguid extension to be a 16 byte value, got %d", len(aaguid))
 	}
 
-	var ent *mdsBlobPayloadEntry
-	for _, entry := range opts.Metadata.blob.Entries {
+	var ent *MetadataEntry
+	for _, entry := range opts.Metadata.Entries {
 		if bytes.Equal(entry.AAGUID[:], aaguid) {
 			ent = entry
 			break

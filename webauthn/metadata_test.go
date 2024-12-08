@@ -32,7 +32,7 @@ func TestParseAAGUID(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		var got struct {
-			AAGUID mdsAAGUID `json:"aaguid"`
+			AAGUID AAGUID `json:"aaguid"`
 		}
 		if err := json.Unmarshal([]byte(`{"aaguid":"`+tc.aaguid+`"}`), &got); err != nil {
 			if !tc.wantErr {

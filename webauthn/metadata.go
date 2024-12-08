@@ -8,14 +8,10 @@ import (
 	"fmt"
 )
 
-type mdsBlob struct {
-	Entries []*mdsBlobPayloadEntry `json:"entries"`
-}
-
 // https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#authenticator-attestation-guid-aaguid-typedef
-type mdsAAGUID [16]byte
+type AAGUID [16]byte
 
-func (m *mdsAAGUID) UnmarshalText(s []byte) error {
+func (m *AAGUID) UnmarshalText(s []byte) error {
 	if len(s) != 36 {
 		return fmt.Errorf("expected aaguid string of length 36, got %d", len(s))
 	}
@@ -39,23 +35,23 @@ func (m *mdsAAGUID) UnmarshalText(s []byte) error {
 	return nil
 }
 
+type Metadata struct {
+	Entries []*MetadataEntry `json:"entries"`
+}
+
 // https://fidoalliance.org/specs/mds/fido-metadata-service-v3.0-ps-20210518.html
-type mdsBlobPayloadEntry struct {
-	AAID     string          `json:"aaid"`
-	AAGUID   mdsAAGUID       `json:"aaguid"`
-	KeyIDs   []string        `json:"attestationCertificateKeyIdentifiers"`
-	Metadata mdsBlobMetadata `json:"metadataStatement"`
+type MetadataEntry struct {
+	AAID     string            `json:"aaid"`
+	AAGUID   AAGUID            `json:"aaguid"`
+	KeyIDs   []string          `json:"attestationCertificateKeyIdentifiers"`
+	Metadata MetadataStatement `json:"metadataStatement"`
 }
 
 // https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#metadata-keys
-type mdsBlobMetadata struct {
-	AAGUID                      mdsAAGUID `json:"aaguid"`
-	Description                 string    `json:"description"`
-	AttestationRootCertificates []string  `json:"attestationRootCertificates"`
-}
-
-type Metadata struct {
-	blob mdsBlob
+type MetadataStatement struct {
+	AAGUID                      AAGUID   `json:"aaguid"`
+	Description                 string   `json:"description"`
+	AttestationRootCertificates []string `json:"attestationRootCertificates"`
 }
 
 func ParseMetadata(b []byte) (*Metadata, error) {
@@ -67,9 +63,9 @@ func ParseMetadata(b []byte) (*Metadata, error) {
 	if _, err := base64.RawURLEncoding.Decode(data, parts[1]); err != nil {
 		return nil, fmt.Errorf("decoding jwt payload: %v", err)
 	}
-	var blob mdsBlob
-	if err := json.Unmarshal(data, &blob); err != nil {
+	var md Metadata
+	if err := json.Unmarshal(data, &md); err != nil {
 		return nil, fmt.Errorf("decoding blob: %v", err)
 	}
-	return &Metadata{blob: blob}, nil
+	return &md, nil
 }
