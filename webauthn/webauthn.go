@@ -215,7 +215,7 @@ func (o *AttestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 
 	var ent *mdsBlobPayloadEntry
 	for _, entry := range opts.Metadata.blob.Entries {
-		if bytes.Equal([]byte(entry.AAGUID), aaguid) {
+		if bytes.Equal(entry.AAGUID[:], aaguid) {
 			ent = entry
 			break
 		}

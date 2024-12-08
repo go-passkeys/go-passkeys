@@ -6,30 +6,36 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 type mdsBlob struct {
 	Entries []*mdsBlobPayloadEntry `json:"entries"`
 }
 
-type mdsAAGUID []byte
+// https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#authenticator-attestation-guid-aaguid-typedef
+type mdsAAGUID [16]byte
 
-func (m *mdsAAGUID) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return fmt.Errorf("aaguid was not a valid string: %v", err)
+func (m *mdsAAGUID) UnmarshalText(s []byte) error {
+	if len(s) != 36 {
+		return fmt.Errorf("expected aaguid string of length 36, got %d", len(s))
 	}
 
-	s = strings.ReplaceAll(s, "-", "")
-	data, err := hex.DecodeString(s)
-	if err != nil {
-		return fmt.Errorf("parsing aaguid hex data: %v", err)
+	var raw [32]byte
+	n := 0
+	for _, r := range s {
+		if n >= 32 {
+			return fmt.Errorf("expected 4 '-' characters in aaguid")
+		}
+		if r == '-' {
+			continue
+		}
+		raw[n] = byte(r)
+		n++
 	}
-	if len(data) != 16 {
-		return fmt.Errorf("expected aaguid to be 16 bytes, got %d", len(data))
+
+	if _, err := hex.Decode((*m)[:], raw[:]); err != nil {
+		return fmt.Errorf("decoding aaguid: %v", err)
 	}
-	*m = data
 	return nil
 }
 
