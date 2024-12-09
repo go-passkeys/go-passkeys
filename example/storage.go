@@ -42,10 +42,12 @@ CREATE TABLE IF NOT EXISTS passkeys (
 	attestation_object BLOB NOT NULL,
     client_data_json   BLOB NOT NULL,
 
-	PRIMARY KEY(username),
+	PRIMARY KEY(user_handle),
 	FOREIGN KEY(username) REFERENCES users(username),
 	UNIQUE(user_handle)
 );
+
+CREATE INDEX IF NOT EXISTS passkeys_by_username ON passkeys (username);
 
 -- Inflight attempts to register a new account with the server.
 CREATE TABLE IF NOT EXISTS registrations (
@@ -95,6 +97,18 @@ CREATE TABLE IF NOT EXISTS sessions (
 	UNIQUE (session_id),
 	PRIMARY KEY(session_id),
 	FOREIGN KEY(username) REFERENCES users(username)
+);
+
+-- Attempts to register a new key for an account.
+CREATE TABLE IF NOT EXISTS passkey_registrations (
+	id          STRING NOT NULL,
+	challenge   BLOB NOT NULL,
+	user_handle BLOB NOT NULL,
+
+	-- Unix microseconds. Expires after 1 hour.
+	created_at INTEGER NOT NULL,
+
+	PRIMARY KEY(id)
 );
 `
 
@@ -229,6 +243,26 @@ func (s *storage) insertUser(ctx context.Context, u *user) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commiting transaction: %v", err)
+	}
+	return nil
+}
+
+// insertPasskey stores a passkey associated with a user
+func (s *storage) insertPasskey(ctx context.Context, p *passkey) error {
+	pub, err := x509.MarshalPKIXPublicKey(p.publicKey)
+	if err != nil {
+		return fmt.Errorf("encoding public key: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+			INSERT INTO passkeys
+			(username, name, passkey_id, user_handle,
+			public_key, algorithm,
+			attestation_object, client_data_json)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, p.username, p.name, p.passkeyID, p.userHandle,
+		pub, int64(p.algorithm),
+		p.attestationObject, p.clientDataJSON); err != nil {
+		return fmt.Errorf("inserting passkey: %v", err)
 	}
 	return nil
 }
@@ -518,6 +552,63 @@ func (s *storage) getRegistration(ctx context.Context, id string) (*registration
 	p.createdAt = time.UnixMicro(createdAt)
 
 	result, err := tx.ExecContext(ctx, `DELETE FROM registrations WHERE registration_id = ?`, id)
+	if err != nil {
+		return nil, fmt.Errorf("deleting registration: %v", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("determining rows affected: %v", err)
+	}
+	if n == 0 {
+		return nil, fmt.Errorf("failed to delete row")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing transaction: %v", err)
+	}
+	return p, nil
+}
+
+// passkeyRegistration is a challenge for associating a key with a profile.
+type passkeyRegistration struct {
+	id         string
+	challenge  []byte
+	userHandle []byte
+	createdAt  time.Time
+}
+
+// insertPasskeyRegistration persists the registration attempt to the database.
+func (s *storage) insertPasskeyRegistration(ctx context.Context, p *passkeyRegistration) error {
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO passkey_registrations
+		(id, challenge, user_handle, created_at)
+		VALUES
+		(?, ?, ?, ?)`,
+		p.id, p.challenge, p.userHandle, p.createdAt.UnixMicro()); err != nil {
+		return fmt.Errorf("insert record: %v", err)
+	}
+	return nil
+}
+
+// getPasskeyRegistration returns the registration data for a given ID.
+func (s *storage) getPasskeyRegistration(ctx context.Context, id string) (*passkeyRegistration, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	p := &passkeyRegistration{id: id}
+	var createdAt int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT challenge, user_handle, created_at
+		FROM passkey_registrations
+		WHERE id = ?`, id).
+		Scan(&p.challenge, &p.userHandle, &createdAt); err != nil {
+		return nil, fmt.Errorf("reading row: %v", err)
+	}
+	p.createdAt = time.UnixMicro(createdAt)
+
+	result, err := tx.ExecContext(ctx, `DELETE FROM passkey_registrations WHERE id = ?`, id)
 	if err != nil {
 		return nil, fmt.Errorf("deleting registration: %v", err)
 	}

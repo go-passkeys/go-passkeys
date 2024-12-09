@@ -75,10 +75,11 @@ func randBytes(size int) []byte {
 // Cookies used by the server. The values are purely random values that match
 // a database row.
 const (
-	cookieLoginID        = "login.id"
-	cookieReauthID       = "reauth.id"
-	cookieRegistrationID = "registration.id"
-	cookieSessionID      = "session.id"
+	cookieKeyRegistrationID = "keyregistration.id"
+	cookieLoginID           = "login.id"
+	cookieReauthID          = "reauth.id"
+	cookieRegistrationID    = "registration.id"
+	cookieSessionID         = "session.id"
 )
 
 // Frontend assets that are statically compiled into the binary. Can optionally,
@@ -116,6 +117,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mux.HandleFunc("POST /login-finish", s.handleLoginFinish)
 		mux.HandleFunc("POST /reauth-start", s.handleReauthStart)
 		mux.HandleFunc("POST /reauth-finish", s.handleReauthFinish)
+		mux.HandleFunc("POST /register-key-start", s.handleNewKeyStart)
+		mux.HandleFunc("POST /register-key-finish", s.handleNewKeyFinish)
 
 		// Static Javascript and CSS assets.
 		mux.HandleFunc("GET /js/main.js", func(w http.ResponseWriter, r *http.Request) {
@@ -597,4 +600,139 @@ func (s *server) handleReauthFinish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.clearCookie(w, r, cookieReauthID)
+}
+
+// handleNewKeyStart begins the processes to register a passkey with an account.
+func (s *server) handleNewKeyStart(w http.ResponseWriter, r *http.Request) {
+	u, ok, err := s.user(r)
+	if err != nil {
+		http.Error(w, "Fetching user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	id := base64.RawURLEncoding.EncodeToString(randBytes(16))
+	challenge := randBytes(16)
+	credentialID := randBytes(16)
+	userHandle := randBytes(16)
+
+	reg := &passkeyRegistration{
+		id:         id,
+		challenge:  challenge,
+		userHandle: userHandle,
+		createdAt:  time.Now(),
+	}
+
+	if err := s.storage.insertPasskeyRegistration(r.Context(), reg); err != nil {
+		http.Error(w, "Creating registration record: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var credIDs [][]byte
+	for _, pk := range u.passkeys {
+		credIDs = append(credIDs, pk.passkeyID)
+	}
+
+	resp := struct {
+		ID        []byte   `json:"credentialID"`
+		IDs       [][]byte `json:"credentialIDs"`
+		Username  string   `json:"username"`
+		UserID    []byte   `json:"userID"`
+		Challenge []byte   `json:"challenge"`
+	}{
+		ID:        credentialID,
+		IDs:       credIDs,
+		Username:  u.username,
+		UserID:    userHandle,
+		Challenge: challenge,
+	}
+	body, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "Encoding response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.setCookie(w, r, cookieKeyRegistrationID, id, time.Hour)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(body)
+}
+
+// handleNewKeyFinish processes a key challenge and attempts to register the
+// key with the active account.
+func (s *server) handleNewKeyFinish(w http.ResponseWriter, r *http.Request) {
+	u, ok, err := s.user(r)
+	if err != nil {
+		http.Error(w, "Fetching user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	c, err := r.Cookie(cookieKeyRegistrationID)
+	if err != nil {
+		http.Error(w, "No key registration ID provided: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	reg, err := s.storage.getPasskeyRegistration(r.Context(), c.Value)
+	if err != nil {
+		http.Error(w, "Get passkey registration: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		AttestationObject []byte `json:"attestationObject"`
+		ClientDataJSON    []byte `json:"clientDataJSON"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	att, err := webauthn.ParseAttestationObject(req.AttestationObject)
+	if err != nil {
+		http.Error(w, "Failed to parse attestation object: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	authData, err := att.AuthenticatorData()
+	if err != nil {
+		http.Error(w, "Parsing authenticator data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	passkeyName := "Passkey"
+	if name, ok := webauthn.AAGUIDName(authData.AAGUID); ok {
+		passkeyName = name
+	}
+
+	var clientData webauthn.ClientData
+	if err := json.Unmarshal(req.ClientDataJSON, &clientData); err != nil {
+		http.Error(w, "Parsing client data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(clientData.Challenge), reg.challenge) != 1 {
+		http.Error(w, "Invalid challenge", http.StatusBadRequest)
+		return
+	}
+
+	p := &passkey{
+		username:          u.username,
+		name:              passkeyName,
+		userHandle:        reg.userHandle,
+		passkeyID:         authData.CredID,
+		publicKey:         authData.PublicKey,
+		algorithm:         authData.Alg,
+		attestationObject: req.AttestationObject,
+		clientDataJSON:    req.ClientDataJSON,
+	}
+	if err := s.storage.insertPasskey(r.Context(), p); err != nil {
+		http.Error(w, "Saving passkey to database: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.clearCookie(w, r, cookieKeyRegistrationID)
 }

@@ -112,6 +112,28 @@ func TestStorageUser(t *testing.T) {
 	if diff := cmp.Diff(wantP, gotP, cmpOptAllowUnexported); diff != "" {
 		t.Errorf("Getting passkey returned unexpected diff (-want, +got): %s", diff)
 	}
+
+	pk := &passkey{
+		username:          "testuser",
+		name:              "my security key",
+		userHandle:        []byte("testuserhandle2"),
+		passkeyID:         []byte("passkeyid2"),
+		publicKey:         priv.Public(),
+		algorithm:         webauthn.ES256,
+		attestationObject: []byte("attestation"),
+		clientDataJSON:    []byte("client data json"),
+	}
+	if err := s.insertPasskey(ctx, pk); err != nil {
+		t.Fatalf("Inserting passkey failed: %v", err)
+	}
+
+	gotP2, err := s.getPasskey(ctx, []byte("testuserhandle2"))
+	if err != nil {
+		t.Fatalf("Getting passkey: %v", err)
+	}
+	if diff := cmp.Diff(pk, gotP2, cmpOptAllowUnexported); diff != "" {
+		t.Errorf("Getting passkey returned unexpected diff (-want, +got): %s", diff)
+	}
 }
 
 func TestStorageSession(t *testing.T) {
@@ -169,6 +191,33 @@ func TestStorageRegistration(t *testing.T) {
 	}
 
 	if _, err := s.getRegistration(ctx, "testid"); err == nil {
+		t.Errorf("Expected getting registration to delete row")
+	}
+}
+
+func TestStoragePasskeyRegistration(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStorage(t)
+
+	now := time.Now().Round(time.Microsecond)
+	want := &passkeyRegistration{
+		id:         "testid",
+		userHandle: []byte("testuserid"),
+		challenge:  []byte("testchallenge"),
+		createdAt:  now,
+	}
+	if err := s.insertPasskeyRegistration(ctx, want); err != nil {
+		t.Fatalf("Inserting passkey registration: %v", err)
+	}
+	got, err := s.getPasskeyRegistration(ctx, "testid")
+	if err != nil {
+		t.Fatalf("Getting passkey registration: %v", err)
+	}
+	if diff := cmp.Diff(want, got, cmpOptAllowUnexported); diff != "" {
+		t.Errorf("Getting passkey registration returned unexpected result (-want, +got): %s", diff)
+	}
+
+	if _, err := s.getPasskeyRegistration(ctx, "testid"); err == nil {
 		t.Errorf("Expected getting registration to delete row")
 	}
 }

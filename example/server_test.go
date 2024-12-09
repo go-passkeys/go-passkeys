@@ -428,3 +428,100 @@ func TestReauth(t *testing.T) {
 		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, finishBody)
 	}
 }
+
+func TestRegisterKey(t *testing.T) {
+	ctx := context.Background()
+	client, srv, s := newTestServer(t)
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Generating test key: %v", err)
+	}
+
+	u := &user{
+		username: "testuser",
+		passkeys: []*passkey{
+			{
+				username:          "testuser",
+				userHandle:        []byte("testuserhandle"),
+				name:              "testkey",
+				passkeyID:         []byte("testkeyid"),
+				publicKey:         priv.Public(),
+				algorithm:         webauthn.ES256,
+				attestationObject: []byte("attestation"),
+				clientDataJSON:    []byte("{}"),
+			},
+		},
+	}
+	if err := s.storage.insertUser(ctx, u); err != nil {
+		t.Fatalf("Inserting test user: %v", err)
+	}
+
+	ses := &session{
+		id:        "sessionid",
+		username:  "testuser",
+		createdAt: time.Now(),
+	}
+	if err := s.storage.insertSession(ctx, ses); err != nil {
+		t.Fatalf("Inserting login attempt: %v", err)
+	}
+
+	su, _ := url.Parse(srv.URL)
+	client.Jar.SetCookies(su, []*http.Cookie{
+		{
+			Name:  "session.id",
+			Value: "sessionid",
+		},
+	})
+
+	req, err := http.NewRequest("POST", srv.URL+"/register-key-start", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("Creating test request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, body)
+	}
+
+	var respData struct {
+		Challenge []byte `json:"challenge"`
+	}
+	if err := json.Unmarshal(body, &respData); err != nil {
+		t.Fatalf("Decoding response: %v", err)
+	}
+	ch := base64.RawURLEncoding.EncodeToString(respData.Challenge)
+
+	clientDataJSON := `{"type":"webauthn.create","challenge":"` + ch + `","origin":"` + srv.URL + `","crossOrigin":false}`
+
+	finishReqBodyBytes := strings.NewReader(`{
+		"attestationObject": "` + yubikeyDirectAttestationObject + `",
+		"clientDataJSON": "` + base64.StdEncoding.EncodeToString([]byte(clientDataJSON)) + `"
+	}`)
+
+	finishReq, err := http.NewRequest("POST", srv.URL+"/register-key-finish", finishReqBodyBytes)
+	if err != nil {
+		t.Fatalf("Creating test request: %v", err)
+	}
+	finishResp, err := client.Do(finishReq)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer finishResp.Body.Close()
+
+	finishBody, err := io.ReadAll(finishResp.Body)
+	if err != nil {
+		t.Fatalf("Reading response body: %v", err)
+	}
+	if finishResp.StatusCode != http.StatusOK {
+		t.Fatalf("Response returned unexpected status code: %s: %s", resp.Status, finishBody)
+	}
+}

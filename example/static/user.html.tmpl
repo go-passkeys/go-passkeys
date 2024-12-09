@@ -25,12 +25,7 @@
         </tr>
       </table>
       {{ end }}
-	  <h2>Add passkey</h2>
-      <p>Add another passkey to your account.</p>
-      <div>
-        <input type="text" id="add_passkey_name" name="passkey" placeholder="Passkey name" required/>
-	    <button type="button" onclick="appAddPasskey()">Add passkey</button>
-      </div>
+	  <button type="button" onclick="appRegisterKey()">Add passkey</button>
 	  <h2>Reauth</h2>
       <p>Challenge your passkeys.</p>
       <button type="button", onclick="appReauth()">Reauthenticate</button>
