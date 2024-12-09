@@ -23,18 +23,11 @@ window.appRegister = async function() {
         return;
     }
 
-    const passkeyName = document.getElementById("register_passkey_name").value;
-    if (passkeyName == "") {
-        err("No passkey name entered");
-        return;
-    }
-
     try {
         const resp = await fetch("/registration-start", {
             method: "POST",
             body: JSON.stringify({
                 username: username,
-				passkeyName: passkeyName,
             }),
         });
         if (!resp.ok) {
@@ -59,7 +52,7 @@ window.appRegister = async function() {
                 user: {
                     id: userID,
                     name: username,
-                    displayName: passkeyName,
+                    displayName: username,
                 },
                 // https://chromium.googlesource.com/chromium/src/+/main/content/browser/webauth/pub_key_cred_params.md
                 // https://www.w3.org/TR/webauthn-2/#typedefdef-cosealgorithmidentifier

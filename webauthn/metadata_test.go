@@ -47,5 +47,9 @@ func TestParseAAGUID(t *testing.T) {
 		if got.AAGUID != tc.want {
 			t.Errorf("Parsing %s returned unexpected result, got=%v, want=%v", tc.aaguid, got.AAGUID, tc.want)
 		}
+		gotStr := got.AAGUID.String()
+		if gotStr != tc.aaguid {
+			t.Errorf("Round tripping %s returned unexpected result: %s", tc.aaguid, gotStr)
+		}
 	}
 }

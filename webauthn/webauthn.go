@@ -387,7 +387,7 @@ type AuthenticatorData struct {
 	RPIDHash [32]byte
 	Flags    Flags
 	Counter  uint32
-	AAGUID   [16]byte
+	AAGUID   AAGUID
 	CredID   []byte
 
 	Alg       Algorithm

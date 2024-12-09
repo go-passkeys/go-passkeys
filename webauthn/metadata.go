@@ -11,7 +11,66 @@ import (
 // https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#authenticator-attestation-guid-aaguid-typedef
 type AAGUID [16]byte
 
-func (m *AAGUID) UnmarshalText(s []byte) error {
+func AAGUIDName(a AAGUID) (string, bool) {
+	// The "passkey-authenticator-aaguids" repo is hand maintained and assumed to
+	// have slightly more human-readable names. Prefer this.
+	if name, ok := passkeyAuthenticatorAAGUIDs[a]; ok {
+		return name, true
+	}
+
+	// Query the FIDO metadata service as a second option.
+	if name, ok := metadataAAGUIDs[a]; ok {
+		return name, true
+	}
+	return "", false
+}
+
+// https://github.com/passkeydeveloper/passkey-authenticator-aaguids
+var aaguids = map[AAGUID]string{
+	mustParseAAGUID("ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4"): "Google Password Manager",
+	mustParseAAGUID("adce0002-35bc-c60a-648b-0b25f1f05503"): "Chrome on Mac",
+	mustParseAAGUID("08987058-cadc-4b81-b6e1-30de50dcbe96"): "Windows Hello",
+	mustParseAAGUID("9ddd1817-af5a-4672-a2b9-3e3dd95000a9"): "Windows Hello",
+}
+
+func mustParseAAGUID(s string) AAGUID {
+	aaguid, err := ParseAAGUID(s)
+	if err != nil {
+		panic(err)
+	}
+	return aaguid
+}
+
+func ParseAAGUID(s string) (AAGUID, error) {
+	var a AAGUID
+	err := a.UnmarshalText([]byte(s))
+	return a, err
+}
+
+// https://datatracker.ietf.org/doc/html/rfc4122#section-3
+func (a AAGUID) marshalText() []byte {
+	b := make([]byte, 36)
+	hex.Encode(b[0:8], a[0:4])
+	b[8] = '-'
+	hex.Encode(b[9:13], a[4:6])
+	b[13] = '-'
+	hex.Encode(b[14:18], a[6:8])
+	b[18] = '-'
+	hex.Encode(b[19:23], a[8:10])
+	b[23] = '-'
+	hex.Encode(b[24:36], a[10:16])
+	return b
+}
+
+func (a AAGUID) String() string {
+	return string(a.marshalText())
+}
+
+func (a AAGUID) MarshalText() ([]byte, error) {
+	return a.marshalText(), nil
+}
+
+func (a *AAGUID) UnmarshalText(s []byte) error {
 	if len(s) != 36 {
 		return fmt.Errorf("expected aaguid string of length 36, got %d", len(s))
 	}
@@ -29,7 +88,7 @@ func (m *AAGUID) UnmarshalText(s []byte) error {
 		n++
 	}
 
-	if _, err := hex.Decode((*m)[:], raw[:]); err != nil {
+	if _, err := hex.Decode((*a)[:], raw[:]); err != nil {
 		return fmt.Errorf("decoding aaguid: %v", err)
 	}
 	return nil
