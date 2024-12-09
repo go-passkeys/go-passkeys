@@ -39,11 +39,6 @@ func main() {
 		"Path to sql database.")
 	flag.Parse()
 
-	md, err := getMetadataBLOB()
-	if err != nil {
-		log.Fatalf("getting FIDO metadata: %v", err)
-	}
-
 	var staticFS fs.FS = staticFSEmbed
 	if watch {
 		staticFS = os.DirFS(".")
@@ -58,31 +53,9 @@ func main() {
 	s := &server{
 		storage:  st,
 		staticFS: staticFS,
-		metadata: md,
 	}
 	log.Printf("Listening on %s", addr)
 	log.Fatal(http.ListenAndServe(":8080", s))
-}
-
-func getMetadataBLOB() (*webauthn.Metadata, error) {
-	resp, err := http.Get("https://mds3.fidoalliance.org/")
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request returned unexpected status: %s", resp.Status)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %v", err)
-	}
-	md, err := webauthn.ParseMetadata(body)
-	if err != nil {
-		return nil, fmt.Errorf("parsing blob: %v", err)
-	}
-	return md, nil
 }
 
 // randBytes returns some number of cryptographically secure random bytes. This
@@ -121,7 +94,6 @@ var staticFSEmbed embed.FS
 type server struct {
 	staticFS fs.FS
 	storage  *storage
-	metadata *webauthn.Metadata
 
 	once    sync.Once // Guards handler.
 	handler http.Handler
