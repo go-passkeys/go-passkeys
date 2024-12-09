@@ -541,7 +541,7 @@ func parseAuthData(b []byte) (*AuthenticatorData, error) {
 	return &ad, nil
 }
 
-// Challenge is a wrapper on top of a WebAuthN challenge.
+// Challenge is a wrapper on top of a WebAuthn challenge.
 //
 // Note that the specification recommends that "Challenges SHOULD therefore be
 // at least 16 bytes long."

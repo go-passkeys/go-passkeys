@@ -293,7 +293,7 @@ func (d *Decoder) typAndArg() (byte, uint64, bool) {
 		return typ, n, true
 	default:
 		// We explicitly ignore indefinite length types (value 31), since
-		// these aren't supported by WebAuthN.
+		// these aren't supported by WebAuthn.
 		return 0, 0, false
 	}
 }

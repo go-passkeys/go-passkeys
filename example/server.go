@@ -114,7 +114,7 @@ const (
 //go:embed static
 var staticFSEmbed embed.FS
 
-// server is a WebAuthN example server, allowing users to register passkeys to
+// server is a WebAuthn example server, allowing users to register passkeys to
 // an account, and perform various actions, such as registering additional keys,
 // challenging existing keys, etc. All state is stored in an sqlite3 database to
 // persist across restarts.

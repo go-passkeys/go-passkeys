@@ -1,1 +1,1 @@
-# WebAuthN for Go
+# WebAuthn for Go

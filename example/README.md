@@ -1,4 +1,4 @@
-# WebAuthN example server
+# WebAuthn example server
 
 ## Yubico
 
