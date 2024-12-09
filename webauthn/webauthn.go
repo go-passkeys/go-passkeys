@@ -377,6 +377,9 @@ func Verify(pub crypto.PublicKey, alg Algorithm, challenge, authData, clientData
 	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
 		return fmt.Errorf("parsing client data JSON: %v", err)
 	}
+
+	// TODO: validate that the client data JSON has the correct type.
+
 	if !clientData.Challenge.Equal(challenge) {
 		return fmt.Errorf("invalid challenge")
 	}
@@ -411,6 +414,8 @@ type AuthenticatorData struct {
 //
 // https://www.w3.org/TR/webauthn-3/#attestation-object
 func ParseAttestationObject(b []byte) (*AttestationObject, error) {
+	// TODO: compare hash of ID to relying party.
+
 	d := cbor.NewDecoder(b)
 	var (
 		format   string
