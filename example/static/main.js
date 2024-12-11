@@ -96,18 +96,10 @@ window.appRegister = async function() {
 
 window.appLogin = async function() {
 	appHideError();
-    const username = document.getElementById("login_username").value;
-    if (username == "") {
-		err("No username entered");
-        return;
-    }
-
     try {
         const resp = await fetch("/login-start", {
             method: "POST",
-            body: JSON.stringify({
-                username: username,
-            }),
+            body: JSON.stringify({}),
         });
         if (!resp.ok) {
             err(await resp.text());
@@ -143,8 +135,6 @@ window.appLogin = async function() {
             err(await finishResp.text());
             return;
         }
-
-		console.log("Logged in");
 
 		window.location.herf = "/";
 		window.location.reload();

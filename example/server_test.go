@@ -171,7 +171,7 @@ func TestLoginStart(t *testing.T) {
 		t.Fatalf("Inserting test user: %v", err)
 	}
 
-	reqBody := strings.NewReader(`{"username":"testuser"}`)
+	reqBody := strings.NewReader(`{}`)
 	req, err := http.NewRequest("POST", srv.URL+"/login-start", reqBody)
 	if err != nil {
 		t.Fatalf("Creating test request: %v", err)

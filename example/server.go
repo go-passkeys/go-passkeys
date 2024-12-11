@@ -252,28 +252,6 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // keys. Because the user isn't logged in yet, the challenge requires a resident
 // key, and therefore doesn't present the set of key IDs back to the user.
 func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username string `json:"username"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if req.Username == "" {
-		http.Error(w, "No username provided", http.StatusBadRequest)
-		return
-	}
-
-	_, ok, err := s.storage.getUser(r.Context(), req.Username)
-	if err != nil {
-		http.Error(w, "Looking up user: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "User not found", http.StatusBadRequest)
-		return
-	}
-
 	// "Challenges SHOULD therefore be at least 16 bytes long."
 	//
 	// https://www.w3.org/TR/webauthn-3/#sctn-cryptographic-challenges
@@ -283,7 +261,6 @@ func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
 
 	l := &login{
 		id:        loginID,
-		username:  req.Username,
 		challenge: challenge,
 		createdAt: now,
 	}
@@ -335,10 +312,6 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 	p, err := s.storage.getPasskey(r.Context(), req.UserHandle)
 	if err != nil {
 		http.Error(w, "Looking up passkey: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if p.username != l.username {
-		http.Error(w, "Passkey not registered for user", http.StatusBadRequest)
 		return
 	}
 
