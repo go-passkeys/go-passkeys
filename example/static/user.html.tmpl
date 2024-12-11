@@ -20,8 +20,20 @@
           <td>{{ .Algorithm }}</td>
         </tr>
         <tr>
+          <td>Added at</td>
+          <td class="registered_at" value="{{ .CreatedAt }}"></td>
+        </tr>
+        <tr>
           <td>Public</td>
           <td class="publickey">{{ .Public }}</td>
+        </tr>
+        <tr>
+          <td>Synced</td>
+          <td>{{ .BackedUp }}</td>
+        </tr>
+        <tr>
+          <td>Client data</td>
+          <td>{{ .ClientData }}</td>
         </tr>
       </table>
       {{ end }}

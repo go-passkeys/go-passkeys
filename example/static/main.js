@@ -1,13 +1,17 @@
-window.appLogin = function() {
-    console.log("login");
-}
-
 function err(text) {
   document.getElementById("errortext").textContent = text;
 
   const ele = document.getElementById("error");
   ele.style.visibility = "visible";
 }
+
+window.addEventListener("load", (event) => {
+	Array.from(document.getElementsByClassName("registered_at")).map((el) => {
+		const val = parseInt(el.getAttribute("value"));
+		const date = new Date(val);
+		el.textContent = date.toLocaleString();
+	});
+});
 
 function appHideError() {
   const ele = document.getElementById("error");

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -17,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"text/template"
 	"time"
@@ -202,9 +204,12 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		// User is logged in. Display their keys back to them.
 		type userPasskeys struct {
-			Name      string
-			Algorithm string
-			Public    string
+			Name       string
+			Algorithm  string
+			Public     string
+			ClientData string
+			CreatedAt  int64
+			BackedUp   bool
 		}
 		var passkeys []userPasskeys
 		for _, pk := range u.passkeys {
@@ -213,13 +218,31 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Encoding key: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
+			attObj, err := webauthn.ParseAttestationObject(pk.attestationObject)
+			if err != nil {
+				http.Error(w, "Parsing attestation object: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			authObj, err := attObj.AuthenticatorData()
+			if err != nil {
+				http.Error(w, "Parsing authenticator data: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
 			p := userPasskeys{
-				Name:      pk.name,
-				Algorithm: pk.algorithm.String(),
-				Public:    base64.StdEncoding.EncodeToString(pub),
+				Name:       pk.name,
+				Algorithm:  pk.algorithm.String(),
+				Public:     base64.StdEncoding.EncodeToString(pub),
+				CreatedAt:  pk.createdAt.UnixMilli(),
+				BackedUp:   authObj.Flags.BackedUp(),
+				ClientData: string(pk.clientDataJSON),
 			}
 			passkeys = append(passkeys, p)
 		}
+
+		slices.SortFunc(passkeys, func(p1, p2 userPasskeys) int {
+			return cmp.Compare(p2.CreatedAt, p1.CreatedAt)
+		})
 
 		data := struct {
 			Username string
