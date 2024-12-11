@@ -158,13 +158,13 @@ func (s *server) user(r *http.Request) (*user, bool, error) {
 }
 
 // setCookie is a helper that sets a cookie to a provided value.
-func (s *server) setCookie(w http.ResponseWriter, r *http.Request, key, val string, exp time.Duration) {
+func (s *server) setCookie(w http.ResponseWriter, r *http.Request, key, val string, exp time.Time) {
 	c := &http.Cookie{
 		Name:     key,
 		Value:    val,
 		Secure:   r.TLS != nil, // Attempt to detect if the request uses HTTPS.
 		HttpOnly: true,
-		Expires:  time.Now().Add(exp),
+		Expires:  exp,
 		SameSite: http.SameSiteStrictMode,
 	}
 	http.SetCookie(w, c)
@@ -257,29 +257,25 @@ func (s *server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
 	// https://www.w3.org/TR/webauthn-3/#sctn-cryptographic-challenges
 	challenge := randBytes(16)
 	loginID := base64.RawURLEncoding.EncodeToString(randBytes(16))
-	now := time.Now()
+	exp := time.Now().Add(time.Hour)
 
 	l := &login{
 		id:        loginID,
 		challenge: challenge,
-		createdAt: now,
+		expiresAt: exp,
 	}
 	if err := s.storage.insertLogin(r.Context(), l); err != nil {
 		http.Error(w, "Creating login: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	// Set the login cookie.
-	//
-	// TODO: ericchiang@ - share this expiry with the database instead of hardcoding
-	// here and in the storage layer.
-	s.setCookie(w, r, cookieLoginID, loginID, time.Hour)
+	s.setCookie(w, r, cookieLoginID, loginID, exp)
 
 	resp := struct {
 		Challenge []byte `json:"challenge"`
 	}{
 		Challenge: challenge,
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -320,19 +316,19 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	exp := time.Now().Add(time.Hour * 24)
 	// User is authenticate, create a session and set a cookie.
 	sessionID := base64.RawURLEncoding.EncodeToString(randBytes(16))
 	ses := &session{
 		id:        sessionID,
 		username:  p.username,
-		createdAt: time.Now(),
+		expiresAt: exp,
 	}
 	if err := s.storage.insertSession(r.Context(), ses); err != nil {
 		http.Error(w, "Creating session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// TODO: ericchiang@ - don't define the session expiry twice.
-	s.setCookie(w, r, cookieSessionID, sessionID, time.Hour*24)
+	s.setCookie(w, r, cookieSessionID, sessionID, exp)
 }
 
 // handleRegistrationStart begins the process of registering an account. This
@@ -368,13 +364,13 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 	registrationID := base64.RawURLEncoding.EncodeToString(randBytes(16))
 	userHandle := randBytes(16)
 
-	now := time.Now()
+	exp := time.Now().Add(time.Hour)
 	reg := &registration{
 		id:         registrationID,
 		username:   req.Username,
 		userHandle: userHandle,
 		challenge:  challenge,
-		createdAt:  now,
+		expiresAt:  exp,
 	}
 	if err := s.storage.insertRegistration(r.Context(), reg); err != nil {
 		http.Error(w, "Creating registration: "+err.Error(), http.StatusInternalServerError)
@@ -389,7 +385,7 @@ func (s *server) handleRegistrationStart(w http.ResponseWriter, r *http.Request)
 		UserID:    userHandle,
 	}
 
-	s.setCookie(w, r, cookieRegistrationID, registrationID, time.Hour)
+	s.setCookie(w, r, cookieRegistrationID, registrationID, exp)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -450,6 +446,7 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 		passkeyID:         authData.CredID,
 		publicKey:         authData.PublicKey,
 		algorithm:         authData.Alg,
+		createdAt:         time.Now(),
 		attestationObject: req.AttestationObject,
 		clientDataJSON:    req.ClientDataJSON,
 	}
@@ -462,18 +459,19 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	exp := time.Now().Add(time.Hour * 24)
 	sessionID := base64.RawURLEncoding.EncodeToString(randBytes(16))
 	ses := &session{
 		id:        sessionID,
 		username:  reg.username,
-		createdAt: time.Now(),
+		expiresAt: exp,
 	}
 	if err := s.storage.insertSession(r.Context(), ses); err != nil {
 		http.Error(w, "Creating session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	s.setCookie(w, r, cookieSessionID, sessionID, time.Hour*24)
+	s.setCookie(w, r, cookieSessionID, sessionID, exp)
 }
 
 // handleReauthStart is a second factor challenge against the set of passkeys
@@ -491,19 +489,19 @@ func (s *server) handleReauthStart(w http.ResponseWriter, r *http.Request) {
 
 	challenge := randBytes(16)
 	reauthID := base64.RawURLEncoding.EncodeToString(randBytes(16))
-	now := time.Now()
+	exp := time.Now().Add(time.Hour)
 
 	re := &reauth{
 		id:        reauthID,
 		username:  u.username,
 		challenge: challenge,
-		createdAt: now,
+		expiresAt: exp,
 	}
 	if err := s.storage.insertReauth(r.Context(), re); err != nil {
 		http.Error(w, "Creating login: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.setCookie(w, r, cookieReauthID, reauthID, time.Hour)
+	s.setCookie(w, r, cookieReauthID, reauthID, exp)
 
 	var credIDs [][]byte
 	for _, pk := range u.passkeys {
@@ -592,11 +590,12 @@ func (s *server) handleNewKeyStart(w http.ResponseWriter, r *http.Request) {
 	credentialID := randBytes(16)
 	userHandle := randBytes(16)
 
+	exp := time.Now().Add(time.Hour)
 	reg := &passkeyRegistration{
 		id:         id,
 		challenge:  challenge,
 		userHandle: userHandle,
-		createdAt:  time.Now(),
+		expiresAt:  exp,
 	}
 
 	if err := s.storage.insertPasskeyRegistration(r.Context(), reg); err != nil {
@@ -628,7 +627,7 @@ func (s *server) handleNewKeyStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.setCookie(w, r, cookieKeyRegistrationID, id, time.Hour)
+	s.setCookie(w, r, cookieKeyRegistrationID, id, exp)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(body)
 }
@@ -699,6 +698,7 @@ func (s *server) handleNewKeyFinish(w http.ResponseWriter, r *http.Request) {
 		passkeyID:         authData.CredID,
 		publicKey:         authData.PublicKey,
 		algorithm:         authData.Alg,
+		createdAt:         time.Now(),
 		attestationObject: req.AttestationObject,
 		clientDataJSON:    req.ClientDataJSON,
 	}

@@ -65,6 +65,8 @@ func TestStorageUser(t *testing.T) {
 		t.Fatalf("Generating test key: %v", err)
 	}
 
+	now := time.Now().Round(time.Microsecond)
+
 	s := newTestStorage(t)
 	want := &user{
 		username: "testuser",
@@ -74,6 +76,7 @@ func TestStorageUser(t *testing.T) {
 				name:              "my security key",
 				userHandle:        []byte("testuserhandle"),
 				passkeyID:         []byte("passkeyid"),
+				createdAt:         now,
 				publicKey:         priv.Public(),
 				algorithm:         webauthn.ES256,
 				attestationObject: []byte("attestation"),
@@ -118,6 +121,7 @@ func TestStorageUser(t *testing.T) {
 		name:              "my security key",
 		userHandle:        []byte("testuserhandle2"),
 		passkeyID:         []byte("passkeyid2"),
+		createdAt:         now,
 		publicKey:         priv.Public(),
 		algorithm:         webauthn.ES256,
 		attestationObject: []byte("attestation"),
@@ -148,7 +152,7 @@ func TestStorageSession(t *testing.T) {
 	want := &session{
 		id:        "abcd",
 		username:  "testuser",
-		createdAt: now,
+		expiresAt: now,
 	}
 	if err := s.insertSession(ctx, want); err != nil {
 		t.Fatalf("Inserting session: %v", err)
@@ -177,7 +181,7 @@ func TestStorageRegistration(t *testing.T) {
 		username:   "testuser",
 		userHandle: []byte("testuserid"),
 		challenge:  []byte("testchallenge"),
-		createdAt:  now,
+		expiresAt:  now,
 	}
 	if err := s.insertRegistration(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey registration: %v", err)
@@ -204,7 +208,7 @@ func TestStoragePasskeyRegistration(t *testing.T) {
 		id:         "testid",
 		userHandle: []byte("testuserid"),
 		challenge:  []byte("testchallenge"),
-		createdAt:  now,
+		expiresAt:  now,
 	}
 	if err := s.insertPasskeyRegistration(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey registration: %v", err)
@@ -231,7 +235,7 @@ func TestStorageLogin(t *testing.T) {
 		id:        "testid",
 		username:  "testuser",
 		challenge: []byte("testchallenge"),
-		createdAt: now,
+		expiresAt: now,
 	}
 	if err := s.insertLogin(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey login: %v", err)
@@ -258,7 +262,7 @@ func TestStorageReauth(t *testing.T) {
 		id:        "testid",
 		username:  "testuser",
 		challenge: []byte("testchallenge"),
-		createdAt: now,
+		expiresAt: now,
 	}
 	if err := s.insertReauth(ctx, want); err != nil {
 		t.Fatalf("Inserting passkey reauth: %v", err)

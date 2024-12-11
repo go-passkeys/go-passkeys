@@ -106,7 +106,7 @@ func TestRegistrationFinish(t *testing.T) {
 		username:   "testuser",
 		userHandle: []byte("testuserid"),
 		challenge:  challenge,
-		createdAt:  time.Now(),
+		expiresAt:  time.Now(),
 	}
 	if err := s.storage.insertRegistration(ctx, reg); err != nil {
 		t.Fatalf("Inserting passkey failed: %v", err)
@@ -333,7 +333,7 @@ func TestReauth(t *testing.T) {
 	ses := &session{
 		id:        "sessionid",
 		username:  "testuser",
-		createdAt: time.Now(),
+		expiresAt: time.Now(),
 	}
 	if err := s.storage.insertSession(ctx, ses); err != nil {
 		t.Fatalf("Inserting login attempt: %v", err)
@@ -460,7 +460,7 @@ func TestRegisterKey(t *testing.T) {
 	ses := &session{
 		id:        "sessionid",
 		username:  "testuser",
-		createdAt: time.Now(),
+		expiresAt: time.Now(),
 	}
 	if err := s.storage.insertSession(ctx, ses); err != nil {
 		t.Fatalf("Inserting login attempt: %v", err)

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS passkeys (
 	passkey_id  BLOB NOT NULL,
 	public_key  BLOB NOT NULL,
 	algorithm   INTEGER NOT NULL,
+	created_at  INTEGER NOT NULL,
 
 	-- Fields used during registration and stored for debugging.
 	attestation_object BLOB NOT NULL,
@@ -57,7 +58,7 @@ CREATE TABLE IF NOT EXISTS registrations (
 	challenge       BLOB NOT NULL,
 
 	-- Unix microseconds. Used to clean up old registration attempts.
-	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
 
 	PRIMARY KEY(registration_id)
 );
@@ -69,7 +70,7 @@ CREATE TABLE IF NOT EXISTS logins (
 	challenge  BLOB NOT NULL,
 
 	-- Unix microseconds. Used to clean up old login attempts.
-	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
 
 	PRIMARY KEY(login_id)
 );
@@ -81,7 +82,7 @@ CREATE TABLE IF NOT EXISTS reauths (
 	challenge  BLOB NOT NULL,
 
 	-- Unix microseconds. Used to clean up old login attempts.
-	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
 
 	PRIMARY KEY(reauth_id)
 );
@@ -92,7 +93,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	username   STRING NOT NULL,
 
 	-- Unix microseconds. Session expire after 24 hours.
-	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
 
 	UNIQUE (session_id),
 	PRIMARY KEY(session_id),
@@ -106,7 +107,7 @@ CREATE TABLE IF NOT EXISTS passkey_registrations (
 	user_handle BLOB NOT NULL,
 
 	-- Unix microseconds. Expires after 1 hour.
-	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
 
 	PRIMARY KEY(id)
 );
@@ -166,23 +167,26 @@ func (s *storage) gc() error {
 		now = time.Now
 	}
 
-	t := now().Add(-time.Hour).UnixMicro()
+	t := now().UnixMicro()
 	if _, err := s.db.Exec(`
 		DELETE FROM registrations
-		WHERE created_at < ?`, t); err != nil {
+		WHERE expires_at < ?`, t); err != nil {
 		return fmt.Errorf("deleting old registrations: %v", err)
 	}
 	if _, err := s.db.Exec(`
 		DELETE FROM logins
-		WHERE created_at < ?`, t); err != nil {
+		WHERE expires_at < ?`, t); err != nil {
 		return fmt.Errorf("deleting old logins: %v", err)
 	}
-
-	st := now().Add(-time.Hour * 24).UnixMicro()
 	if _, err := s.db.Exec(`
 		DELETE FROM sessions
-		WHERE created_at < ?`, st); err != nil {
-		return fmt.Errorf("deleting old logins: %v", err)
+		WHERE expires_at < ?`, t); err != nil {
+		return fmt.Errorf("deleting old sessions: %v", err)
+	}
+	if _, err := s.db.Exec(`
+		DELETE FROM passkey_registrations
+		WHERE expires_at < ?`, t); err != nil {
+		return fmt.Errorf("deleting old passkey registrations")
 	}
 	return nil
 }
@@ -203,6 +207,7 @@ type passkey struct {
 	name       string
 	userHandle []byte
 	passkeyID  []byte
+	createdAt  time.Time
 	publicKey  crypto.PublicKey
 	algorithm  webauthn.Algorithm
 
@@ -231,11 +236,11 @@ func (s *storage) insertUser(ctx context.Context, u *user) error {
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO passkeys
-			(username, name, passkey_id, user_handle,
+			(username, name, passkey_id, user_handle, created_at,
 			public_key, algorithm,
 			attestation_object, client_data_json)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, p.username, p.name, p.passkeyID, p.userHandle,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, p.username, p.name, p.passkeyID, p.userHandle, p.createdAt.UnixMicro(),
 			pub, int64(p.algorithm),
 			p.attestationObject, p.clientDataJSON); err != nil {
 			return fmt.Errorf("inserting passkey: %v", err)
@@ -255,11 +260,11 @@ func (s *storage) insertPasskey(ctx context.Context, p *passkey) error {
 	}
 	if _, err := s.db.ExecContext(ctx, `
 			INSERT INTO passkeys
-			(username, name, passkey_id, user_handle,
+			(username, name, passkey_id, user_handle, created_at,
 			public_key, algorithm,
 			attestation_object, client_data_json)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, p.username, p.name, p.passkeyID, p.userHandle,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, p.username, p.name, p.passkeyID, p.userHandle, p.createdAt.UnixMicro(),
 		pub, int64(p.algorithm),
 		p.attestationObject, p.clientDataJSON); err != nil {
 		return fmt.Errorf("inserting passkey: %v", err)
@@ -288,7 +293,7 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT
-		name, passkey_id, user_handle,
+		name, passkey_id, user_handle, created_at,
 		public_key, algorithm,
 		attestation_object, client_data_json
 		FROM passkeys
@@ -299,10 +304,11 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 	for rows.Next() {
 		p := &passkey{username: username}
 		var (
-			pubDER []byte
-			alg    int64
+			pubDER    []byte
+			alg       int64
+			createdAt int64
 		)
-		if err := rows.Scan(&p.name, &p.passkeyID, &p.userHandle, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON); err != nil {
+		if err := rows.Scan(&p.name, &p.passkeyID, &p.userHandle, &createdAt, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON); err != nil {
 			return nil, false, fmt.Errorf("scanning passkey row: %v", err)
 		}
 		pub, err := x509.ParsePKIXPublicKey(pubDER)
@@ -311,6 +317,7 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 		}
 		p.publicKey = pub
 		p.algorithm = webauthn.Algorithm(alg)
+		p.createdAt = time.UnixMicro(createdAt)
 
 		u.passkeys = append(u.passkeys, p)
 	}
@@ -329,17 +336,18 @@ func (s *storage) getPasskey(ctx context.Context, userHandle []byte) (*passkey, 
 		userHandle: userHandle,
 	}
 	var (
-		pubDER []byte
-		alg    int64
+		pubDER    []byte
+		alg       int64
+		createdAt int64
 	)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-		username,name, passkey_id,
+		username, name, passkey_id, created_at,
 		public_key, algorithm,
 		attestation_object, client_data_json
 		FROM passkeys
 		WHERE user_handle = ?`, userHandle).
-		Scan(&p.username, &p.name, &p.passkeyID, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON)
+		Scan(&p.username, &p.name, &p.passkeyID, &createdAt, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON)
 	if err != nil {
 		return nil, fmt.Errorf("scanning passkey row: %v", err)
 	}
@@ -349,6 +357,7 @@ func (s *storage) getPasskey(ctx context.Context, userHandle []byte) (*passkey, 
 	}
 	p.publicKey = pub
 	p.algorithm = webauthn.Algorithm(alg)
+	p.createdAt = time.UnixMicro(createdAt)
 	return p, nil
 }
 
@@ -356,15 +365,15 @@ func (s *storage) getPasskey(ctx context.Context, userHandle []byte) (*passkey, 
 type session struct {
 	id        string
 	username  string
-	createdAt time.Time
+	expiresAt time.Time
 }
 
 // insertSession stores a session record in the database.
 func (s *storage) insertSession(ctx context.Context, ses *session) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sessions
-		(session_id, username, created_at)
-		VALUES (?, ?, ?)`, ses.id, ses.username, ses.createdAt.UnixMicro())
+		(session_id, username, expires_at)
+		VALUES (?, ?, ?)`, ses.id, ses.username, ses.expiresAt.UnixMicro())
 	if err != nil {
 		return fmt.Errorf("inserting session: %v", err)
 	}
@@ -375,17 +384,17 @@ func (s *storage) insertSession(ctx context.Context, ses *session) error {
 // example, because it expired.
 func (s *storage) getSession(ctx context.Context, id string) (*session, bool, error) {
 	ses := &session{id: id}
-	var createdAt int64
+	var expiresAt int64
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT username, created_at
+		SELECT username, expires_at
 		FROM sessions
-		WHERE session_id = ?`, id).Scan(&ses.username, &createdAt); err != nil {
+		WHERE session_id = ?`, id).Scan(&ses.username, &expiresAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("querying session table: %v", err)
 	}
-	ses.createdAt = time.UnixMicro(createdAt)
+	ses.expiresAt = time.UnixMicro(expiresAt)
 	return ses, true, nil
 }
 
@@ -394,17 +403,17 @@ type login struct {
 	id        string
 	username  string
 	challenge []byte
-	createdAt time.Time
+	expiresAt time.Time
 }
 
 // insertLogin creates a database record for the login attempt.
 func (s *storage) insertLogin(ctx context.Context, l *login) error {
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO logins
-		(login_id, username, challenge, created_at)
+		(login_id, username, challenge, expires_at)
 		VALUES
 		(?, ?, ?, ?)`,
-		l.id, l.username, l.challenge, l.createdAt.UnixMicro()); err != nil {
+		l.id, l.username, l.challenge, l.expiresAt.UnixMicro()); err != nil {
 		return fmt.Errorf("inserting login row: %v", err)
 	}
 	return nil
@@ -421,15 +430,15 @@ func (s *storage) getLogin(ctx context.Context, id string) (*login, error) {
 	defer tx.Rollback()
 
 	l := &login{id: id}
-	var createdAt int64
+	var expiresAt int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT username, challenge, created_at
+		SELECT username, challenge, expires_at
 		FROM logins
 		WHERE login_id = ?`, id).
-		Scan(&l.username, &l.challenge, &createdAt); err != nil {
+		Scan(&l.username, &l.challenge, &expiresAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
-	l.createdAt = time.UnixMicro(createdAt)
+	l.expiresAt = time.UnixMicro(expiresAt)
 
 	result, err := tx.ExecContext(ctx, `DELETE FROM logins WHERE login_id = ?`, id)
 	if err != nil {
@@ -453,17 +462,17 @@ type reauth struct {
 	id        string
 	username  string
 	challenge []byte
-	createdAt time.Time
+	expiresAt time.Time
 }
 
 // insertReauth creates a database record for the reauth attempt.
 func (s *storage) insertReauth(ctx context.Context, l *reauth) error {
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO reauths
-		(reauth_id, username, challenge, created_at)
+		(reauth_id, username, challenge, expires_at)
 		VALUES
 		(?, ?, ?, ?)`,
-		l.id, l.username, l.challenge, l.createdAt.UnixMicro()); err != nil {
+		l.id, l.username, l.challenge, l.expiresAt.UnixMicro()); err != nil {
 		return fmt.Errorf("inserting reauth row: %v", err)
 	}
 	return nil
@@ -480,15 +489,15 @@ func (s *storage) getReauth(ctx context.Context, id string) (*reauth, error) {
 	defer tx.Rollback()
 
 	l := &reauth{id: id}
-	var createdAt int64
+	var expiresAt int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT username, challenge, created_at
+		SELECT username, challenge, expires_at
 		FROM reauths
 		WHERE reauth_id = ?`, id).
-		Scan(&l.username, &l.challenge, &createdAt); err != nil {
+		Scan(&l.username, &l.challenge, &expiresAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
-	l.createdAt = time.UnixMicro(createdAt)
+	l.expiresAt = time.UnixMicro(expiresAt)
 
 	result, err := tx.ExecContext(ctx, `DELETE FROM reauths WHERE reauth_id = ?`, id)
 	if err != nil {
@@ -514,17 +523,17 @@ type registration struct {
 	username   string
 	userHandle []byte
 	challenge  []byte
-	createdAt  time.Time
+	expiresAt  time.Time
 }
 
 // insertRegistration persists the registration attempt to the database.
 func (s *storage) insertRegistration(ctx context.Context, p *registration) error {
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO registrations
-		(registration_id, username, user_handle, challenge, created_at)
+		(registration_id, username, user_handle, challenge, expires_at)
 		VALUES
 		(?, ?, ?, ?, ?)`,
-		p.id, p.username, p.userHandle, p.challenge, p.createdAt.UnixMicro()); err != nil {
+		p.id, p.username, p.userHandle, p.challenge, p.expiresAt.UnixMicro()); err != nil {
 		return fmt.Errorf("insert record: %v", err)
 	}
 	return nil
@@ -541,15 +550,15 @@ func (s *storage) getRegistration(ctx context.Context, id string) (*registration
 	defer tx.Rollback()
 
 	p := &registration{id: id}
-	var createdAt int64
+	var expiresAt int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT username,  user_handle, challenge, created_at
+		SELECT username,  user_handle, challenge, expires_at
 		FROM registrations
 		WHERE registration_id = ?`, id).
-		Scan(&p.username, &p.userHandle, &p.challenge, &createdAt); err != nil {
+		Scan(&p.username, &p.userHandle, &p.challenge, &expiresAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
-	p.createdAt = time.UnixMicro(createdAt)
+	p.expiresAt = time.UnixMicro(expiresAt)
 
 	result, err := tx.ExecContext(ctx, `DELETE FROM registrations WHERE registration_id = ?`, id)
 	if err != nil {
@@ -573,17 +582,17 @@ type passkeyRegistration struct {
 	id         string
 	challenge  []byte
 	userHandle []byte
-	createdAt  time.Time
+	expiresAt  time.Time
 }
 
 // insertPasskeyRegistration persists the registration attempt to the database.
 func (s *storage) insertPasskeyRegistration(ctx context.Context, p *passkeyRegistration) error {
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO passkey_registrations
-		(id, challenge, user_handle, created_at)
+		(id, challenge, user_handle, expires_at)
 		VALUES
 		(?, ?, ?, ?)`,
-		p.id, p.challenge, p.userHandle, p.createdAt.UnixMicro()); err != nil {
+		p.id, p.challenge, p.userHandle, p.expiresAt.UnixMicro()); err != nil {
 		return fmt.Errorf("insert record: %v", err)
 	}
 	return nil
@@ -598,15 +607,15 @@ func (s *storage) getPasskeyRegistration(ctx context.Context, id string) (*passk
 	defer tx.Rollback()
 
 	p := &passkeyRegistration{id: id}
-	var createdAt int64
+	var expiresAt int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT challenge, user_handle, created_at
+		SELECT challenge, user_handle, expires_at
 		FROM passkey_registrations
 		WHERE id = ?`, id).
-		Scan(&p.challenge, &p.userHandle, &createdAt); err != nil {
+		Scan(&p.challenge, &p.userHandle, &expiresAt); err != nil {
 		return nil, fmt.Errorf("reading row: %v", err)
 	}
-	p.createdAt = time.UnixMicro(createdAt)
+	p.expiresAt = time.UnixMicro(expiresAt)
 
 	result, err := tx.ExecContext(ctx, `DELETE FROM passkey_registrations WHERE id = ?`, id)
 	if err != nil {
