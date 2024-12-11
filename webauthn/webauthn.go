@@ -148,7 +148,7 @@ func (o *AttestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 		// algorithm of the credential private key and omits the other fields.""
 		//
 		// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
-		if err := verifySignature(ad.PublicKey, ad.Alg, data, p.sig); err != nil {
+		if err := verifySignature(ad.PublicKey, ad.Algorithm, data, p.sig); err != nil {
 			return nil, fmt.Errorf("verifying self-attested data: %v", err)
 		}
 		return &Packed{
@@ -386,14 +386,55 @@ func Verify(pub crypto.PublicKey, alg Algorithm, challenge, authData, clientData
 	return nil
 }
 
+// AuthenticatorData holds information about an individual credential. This
+// data can be verified through attestation statements during registration, but
+// is generally assumed to have been correctly provided by the browser.
+//
+// https://www.w3.org/TR/webauthn-3/#authenticator-data
 type AuthenticatorData struct {
+	// SHA-256 hash of the relying party ID. Whereas the "origin" is always the
+	// full base URL seen by the browser during registration, with scheme and
+	// optional port, the RP ID can be a domain or URL with some restrictions.
+	//
+	// The spec provides the following example:
+	//
+	// 	"...given a Relying Party whose origin is https://login.example.com:1337,
+	//	then the following RP IDs are valid: login.example.com (default) and
+	//	example.com, but not m.login.example.com and not com."
+	//
+	// https://www.w3.org/TR/webauthn-3/#rp-id
 	RPIDHash [32]byte
-	Flags    Flags
-	Counter  uint32
-	AAGUID   AAGUID
-	CredID   []byte
-
-	Alg       Algorithm
+	// Various bits of information about this key, such as if it is synced to a
+	// Cloud service.
+	//
+	// https://www.w3.org/TR/webauthn-3/#authdata-flags
+	Flags Flags
+	// Counter is incremented value that is increased every time the key signs a
+	// challenge. This may be zero for authenticators that don't support signing
+	// counters.
+	//
+	// Signature counters are intended to be used to detect cloned credentials.
+	//
+	// https://www.w3.org/TR/webauthn-3/#sctn-sign-counter
+	Counter uint32
+	// The identifier for authenticator or credential service used to validate the
+	// key.
+	//
+	// [AAGUIDName] can be used to translate this to a human readable string, such
+	// as "iCloud Keychain" or "Google Password Manager".
+	AAGUID AAGUID
+	// Raw ID of the credential. This value can be used as hints to the browser
+	// when authenticating a user, or during registration to avoid re-registering
+	// the same key twice.
+	//
+	// https://www.w3.org/TR/webauthn-3/#credential-id
+	CredentialID []byte
+	// Algorithm used by the key to sign challenges.
+	Algorithm Algorithm
+	// Public key parse from the attestation statement.
+	//
+	// Callers can use [x509.MarshalPKIXPublicKey] and [x509.ParsePKIXPublicKey] to
+	// serialize these keys.
 	PublicKey crypto.PublicKey
 
 	// Raw extension data.
@@ -530,7 +571,7 @@ func parseAuthData(b []byte) (*AuthenticatorData, error) {
 	if len(b) < size {
 		return nil, fmt.Errorf("not enough bytes for cred ID")
 	}
-	ad.CredID = b[:size]
+	ad.CredentialID = b[:size]
 	b = b[size:]
 
 	d := cbor.NewDecoder(b)
@@ -538,7 +579,7 @@ func parseAuthData(b []byte) (*AuthenticatorData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing public key: %v", err)
 	}
-	ad.Alg = Algorithm(pub.Algorithm)
+	ad.Algorithm = Algorithm(pub.Algorithm)
 	ad.PublicKey = pub.Public
 	if !d.Done() {
 		ad.Extensions = d.Rest()
