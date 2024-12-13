@@ -83,7 +83,8 @@ button {
 }
 
 .passkey {
-  margin: 0.5em;
+  margin-bottom: 0.5em;
+  margin-top: 0.5em;
 }
 
 .passkey-date {
@@ -95,7 +96,8 @@ button {
 }
 
 .passkey-info {
-  margin: 0.5em;
+  margin-bottom: 0.5em;
+  margin-top: 0.5em;
   max-height: 0;
   overflow: hidden;
 }
