@@ -100,12 +100,12 @@ button {
   margin-top: 0.5em;
   max-height: 0;
   overflow: hidden;
+  transition: max-height 0.2s ease-in-out;
+  -webkit-transition: max-height 0.2s ease-in-out;
 }
 
 .passkey-info.expanded {
-  max-height: 500em;
-  transition: max-height 1s ease-in-out;
-  -webkit-transition: max-height 1s ease-in-out;
+  max-height: 20em;
 }
 
 .passkey-info-element {
