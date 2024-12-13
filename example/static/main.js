@@ -13,6 +13,17 @@ window.addEventListener("load", (event) => {
 	});
 });
 
+window.addEventListener("load", (event) => {
+	Array.from(document.getElementsByClassName("passkey-menu")).map((el) => {
+		el.addEventListener("click", (event) => {
+			const menu = event.srcElement;
+			const passkey = menu.parentElement;
+			const info = passkey.getElementsByClassName("passkey-info")[0];
+			info.classList.toggle("expanded");
+		});
+	});
+});
+
 function appHideError() {
   const ele = document.getElementById("error");
   ele.style.visibility = "hidden";

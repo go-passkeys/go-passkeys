@@ -9,34 +9,30 @@
 	  <h2>Hello, {{.Username}}</h2>
 	  <h2>Passkeys</h2>
       <p>Passkeys associated with your account.</p>
-      {{ range .Passkeys }}
-      <table>
-        <tr>
-          <td>Name</td>
-          <td>{{ .Name }}</td>
-        </tr>
-        <tr>
-          <td>Algorithm</td>
-          <td>{{ .Algorithm }}</td>
-        </tr>
-        <tr>
-          <td>Added at</td>
-          <td class="registered_at" value="{{ .CreatedAt }}"></td>
-        </tr>
-        <tr>
-          <td>Public</td>
-          <td class="publickey">{{ .Public }}</td>
-        </tr>
-        <tr>
-          <td>Synced</td>
-          <td>{{ .BackedUp }}</td>
-        </tr>
-        <tr>
-          <td>Client data</td>
-          <td>{{ .ClientData }}</td>
-        </tr>
-      </table>
-      {{ end }}
+      <div class="passkeys">
+        {{ range .Passkeys }}
+        <div class="passkey">
+          <span class="passkey-menu material-symbols-outlined">menu</span>
+          <div class="passkey-name">{{ .Name }}</div>
+          <div class="passkey-date">Added <div class="registered_at" value="{{ .CreatedAt }}"></div></div>
+		  <div class="passkey-info">
+            <div class="passkey-public passkey-info-element">
+              <div class="passkey-public-name">Public key</div>
+              <div class="passkey-public-data">
+                {{ .Algorithm }}<br>
+                {{ .Public }}
+              </div>
+            </div>
+            <div class="passkey-synced passkey-info-element">
+              <div>Status</div>
+              <div class="passkey-synced-data">
+                {{ if .BackedUp }}Backed up{{ else }}Not backed up{{ end }}
+              </div>
+            </div>
+          </div>
+        </div>
+        {{ end }}
+      </div>
 	  <button type="button" onclick="appRegisterKey()">Add passkey</button>
 	  <h2>Reauth</h2>
       <p>Challenge your passkeys.</p>

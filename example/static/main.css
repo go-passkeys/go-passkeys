@@ -12,7 +12,7 @@ body {
 }
 
 #user {
-  max-width: 50em;
+  max-width: 30em;
   margin-left: auto;
   margin-right: auto;
   padding-left: 1em;
@@ -50,10 +50,6 @@ td {
     vertical-align: top;
 }
 
-.publickey {
-	word-break: break-all;
-}
-
 span {
   cursor: pointer;
   float: right;
@@ -83,4 +79,48 @@ button {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
   width: 100%;
+  border-width: 1px;
+}
+
+.passkeys {
+}
+
+.passkey {
+  padding: 0.5em;
+}
+
+.passkey-name {
+}
+
+.passkey-date {
+  color: grey;
+}
+
+.passkey-date > .registered_at {
+  display: inline;
+}
+
+.passkey-info {
+  max-height: 0;
+  overflow: hidden;
+}
+
+.passkey-info.expanded {
+  max-height: 500em;
+  transition: max-height 1s ease-in-out;
+  -webkit-transition: max-height 1s ease-in-out;
+}
+
+.passkey-info-element {
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+}
+
+.passkey-public-data {
+  word-break: break-all;
+  color: grey;
+}
+
+.passkey-synced-data {
+  color: grey;
 }
