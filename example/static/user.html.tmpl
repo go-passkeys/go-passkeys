@@ -16,17 +16,27 @@
           <div class="passkey-name">{{ .Name }}</div>
           <div class="passkey-date">Added <div class="registered_at" value="{{ .CreatedAt }}"></div></div>
 		  <div class="passkey-info">
-            <div class="passkey-public passkey-info-element">
-              <div class="passkey-public-name">Public key</div>
-              <div class="passkey-public-data">
+            <div class="passkey-info-element">
+              <div>ID</div>
+              <div class="passkey-info-element-data">{{ .ID }}</div>
+            </div>
+            <div class="passkey-info-element">
+              <div>Public key</div>
+              <div class="passkey-info-element-data">
                 {{ .Algorithm }}<br>
                 {{ .Public }}
               </div>
             </div>
-            <div class="passkey-synced passkey-info-element">
+            <div class="passkey-info-element">
               <div>Status</div>
-              <div class="passkey-synced-data">
+              <div class="passkey-info-element-data">
                 {{ if .BackedUp }}Backed up{{ else }}Not backed up{{ end }}
+              </div>
+            </div>
+            <div class="passkey-info-element">
+              <div>Transport</div>
+              <div class="passkey-info-element-data">
+                {{ range .Transports }}{{ . }} {{end}}
               </div>
             </div>
           </div>

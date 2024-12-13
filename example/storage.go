@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -38,6 +39,8 @@ CREATE TABLE IF NOT EXISTS passkeys (
 	public_key  BLOB NOT NULL,
 	algorithm   INTEGER NOT NULL,
 	created_at  INTEGER NOT NULL,
+	-- JSON array of transport that have been registered.
+	transports BLOB NOT NULL,
 
 	-- Fields used during registration and stored for debugging.
 	attestation_object BLOB NOT NULL,
@@ -210,6 +213,7 @@ type passkey struct {
 	createdAt  time.Time
 	publicKey  crypto.PublicKey
 	algorithm  webauthn.Algorithm
+	transports []string
 
 	attestationObject []byte
 	clientDataJSON    []byte
@@ -234,14 +238,18 @@ func (s *storage) insertUser(ctx context.Context, u *user) error {
 		if err != nil {
 			return fmt.Errorf("encoding public key: %v", err)
 		}
+		transports, err := json.Marshal(p.transports)
+		if err != nil {
+			return fmt.Errorf("encoding transports: %v", err)
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO passkeys
 			(username, name, passkey_id, user_handle, created_at,
-			public_key, algorithm,
+			public_key, algorithm, transports,
 			attestation_object, client_data_json)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, p.username, p.name, p.passkeyID, p.userHandle, p.createdAt.UnixMicro(),
-			pub, int64(p.algorithm),
+			pub, int64(p.algorithm), transports,
 			p.attestationObject, p.clientDataJSON); err != nil {
 			return fmt.Errorf("inserting passkey: %v", err)
 		}
@@ -258,14 +266,18 @@ func (s *storage) insertPasskey(ctx context.Context, p *passkey) error {
 	if err != nil {
 		return fmt.Errorf("encoding public key: %v", err)
 	}
+	transports, err := json.Marshal(p.transports)
+	if err != nil {
+		return fmt.Errorf("encoding transports: %v", err)
+	}
 	if _, err := s.db.ExecContext(ctx, `
 			INSERT INTO passkeys
 			(username, name, passkey_id, user_handle, created_at,
-			public_key, algorithm,
+			public_key, algorithm, transports,
 			attestation_object, client_data_json)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, p.username, p.name, p.passkeyID, p.userHandle, p.createdAt.UnixMicro(),
-		pub, int64(p.algorithm),
+		pub, int64(p.algorithm), transports,
 		p.attestationObject, p.clientDataJSON); err != nil {
 		return fmt.Errorf("inserting passkey: %v", err)
 	}
@@ -294,7 +306,7 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 	rows, err := tx.QueryContext(ctx, `
 		SELECT
 		name, passkey_id, user_handle, created_at,
-		public_key, algorithm,
+		public_key, algorithm, transports,
 		attestation_object, client_data_json
 		FROM passkeys
 		WHERE username = ?`, username)
@@ -304,16 +316,20 @@ func (s *storage) getUser(ctx context.Context, username string) (*user, bool, er
 	for rows.Next() {
 		p := &passkey{username: username}
 		var (
-			pubDER    []byte
-			alg       int64
-			createdAt int64
+			pubDER     []byte
+			transports []byte
+			alg        int64
+			createdAt  int64
 		)
-		if err := rows.Scan(&p.name, &p.passkeyID, &p.userHandle, &createdAt, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON); err != nil {
+		if err := rows.Scan(&p.name, &p.passkeyID, &p.userHandle, &createdAt, &pubDER, &alg, &transports, &p.attestationObject, &p.clientDataJSON); err != nil {
 			return nil, false, fmt.Errorf("scanning passkey row: %v", err)
 		}
 		pub, err := x509.ParsePKIXPublicKey(pubDER)
 		if err != nil {
 			return nil, false, fmt.Errorf("parsing public key: %v", err)
+		}
+		if err := json.Unmarshal(transports, &p.transports); err != nil {
+			return nil, false, fmt.Errorf("parsing transports: %v", err)
 		}
 		p.publicKey = pub
 		p.algorithm = webauthn.Algorithm(alg)
@@ -336,24 +352,28 @@ func (s *storage) getPasskey(ctx context.Context, userHandle []byte) (*passkey, 
 		userHandle: userHandle,
 	}
 	var (
-		pubDER    []byte
-		alg       int64
-		createdAt int64
+		pubDER     []byte
+		transports []byte
+		alg        int64
+		createdAt  int64
 	)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 		username, name, passkey_id, created_at,
-		public_key, algorithm,
+		public_key, algorithm, transports,
 		attestation_object, client_data_json
 		FROM passkeys
 		WHERE user_handle = ?`, userHandle).
-		Scan(&p.username, &p.name, &p.passkeyID, &createdAt, &pubDER, &alg, &p.attestationObject, &p.clientDataJSON)
+		Scan(&p.username, &p.name, &p.passkeyID, &createdAt, &pubDER, &alg, &transports, &p.attestationObject, &p.clientDataJSON)
 	if err != nil {
 		return nil, fmt.Errorf("scanning passkey row: %v", err)
 	}
 	pub, err := x509.ParsePKIXPublicKey(pubDER)
 	if err != nil {
 		return nil, fmt.Errorf("parsing public key: %v", err)
+	}
+	if err := json.Unmarshal(transports, &p.transports); err != nil {
+		return nil, fmt.Errorf("parsing transports: %v", err)
 	}
 	p.publicKey = pub
 	p.algorithm = webauthn.Algorithm(alg)

@@ -204,12 +204,14 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		// User is logged in. Display their keys back to them.
 		type userPasskeys struct {
+			ID         string
 			Name       string
 			Algorithm  string
 			Public     string
 			ClientData string
 			CreatedAt  int64
 			BackedUp   bool
+			Transports []string
 		}
 		var passkeys []userPasskeys
 		for _, pk := range u.passkeys {
@@ -230,12 +232,14 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			}
 
 			p := userPasskeys{
+				ID:         base64.StdEncoding.EncodeToString(pk.passkeyID),
 				Name:       pk.name,
 				Algorithm:  pk.algorithm.String(),
 				Public:     base64.StdEncoding.EncodeToString(pub),
 				CreatedAt:  pk.createdAt.UnixMilli(),
 				BackedUp:   authObj.Flags.BackedUp(),
 				ClientData: string(pk.clientDataJSON),
+				Transports: pk.transports,
 			}
 			passkeys = append(passkeys, p)
 		}
@@ -428,8 +432,9 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		AttestationObject []byte `json:"attestationObject"`
-		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Transports        []string `json:"transports"`
+		AttestationObject []byte   `json:"attestationObject"`
+		ClientDataJSON    []byte   `json:"clientDataJSON"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
@@ -470,6 +475,7 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 		publicKey:         authData.PublicKey,
 		algorithm:         authData.Algorithm,
 		createdAt:         time.Now(),
+		transports:        req.Transports,
 		attestationObject: req.AttestationObject,
 		clientDataJSON:    req.ClientDataJSON,
 	}
@@ -526,17 +532,22 @@ func (s *server) handleReauthStart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setCookie(w, r, cookieReauthID, reauthID, exp)
 
-	var credIDs [][]byte
+	type reauthCredential struct {
+		ID         []byte   `json:"id"`
+		Transports []string `json:"transports"`
+	}
+
+	var creds []reauthCredential
 	for _, pk := range u.passkeys {
-		credIDs = append(credIDs, pk.passkeyID)
+		creds = append(creds, reauthCredential{pk.passkeyID, pk.transports})
 	}
 
 	resp := struct {
-		IDs       [][]byte `json:"credentialIDs"`
-		Challenge []byte   `json:"challenge"`
+		Credentials []reauthCredential `json:"credentials"`
+		Challenge   []byte             `json:"challenge"`
 	}{
-		IDs:       credIDs,
-		Challenge: challenge,
+		Credentials: creds,
+		Challenge:   challenge,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -680,8 +691,9 @@ func (s *server) handleNewKeyFinish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		AttestationObject []byte `json:"attestationObject"`
-		ClientDataJSON    []byte `json:"clientDataJSON"`
+		Transports        []string `json:"transports"`
+		AttestationObject []byte   `json:"attestationObject"`
+		ClientDataJSON    []byte   `json:"clientDataJSON"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decoding request: "+err.Error(), http.StatusBadRequest)
@@ -722,6 +734,7 @@ func (s *server) handleNewKeyFinish(w http.ResponseWriter, r *http.Request) {
 		publicKey:         authData.PublicKey,
 		algorithm:         authData.Algorithm,
 		createdAt:         time.Now(),
+		transports:        req.Transports,
 		attestationObject: req.AttestationObject,
 		clientDataJSON:    req.ClientDataJSON,
 	}

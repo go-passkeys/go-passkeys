@@ -79,6 +79,7 @@ func TestStorageUser(t *testing.T) {
 				createdAt:         now,
 				publicKey:         priv.Public(),
 				algorithm:         webauthn.ES256,
+				transports:        []string{"hybrid", "internal"},
 				attestationObject: []byte("attestation"),
 				clientDataJSON:    []byte("client data json"),
 			},
@@ -124,6 +125,7 @@ func TestStorageUser(t *testing.T) {
 		createdAt:         now,
 		publicKey:         priv.Public(),
 		algorithm:         webauthn.ES256,
+		transports:        []string{"hybrid", "internal"},
 		attestationObject: []byte("attestation"),
 		clientDataJSON:    []byte("client data json"),
 	}

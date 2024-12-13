@@ -94,6 +94,7 @@ window.appRegister = async function() {
         const finishResp = await fetch("/registration-finish", {
             method: "POST",
             body: JSON.stringify({
+				transports: cred.response.getTransports(),
                 attestationObject: attestationObject,
                 clientDataJSON: clientDataJSON,
             }),
@@ -172,9 +173,11 @@ window.appReauth = async function() {
 
         const body = await resp.json();
         const challenge = Uint8Array.from(atob(body.challenge), c => c.charCodeAt(0));
-		const creds = body.credentialIDs.map((credID) => {
+		const creds = body.credentials.map((cred) => {
 			return {
-			    id: Uint8Array.from(atob(credID), c => c.charCodeAt(0)),
+			    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
+				type: "public-key",
+				transports: cred.transports,
 			};
 		});
 		console.log(creds);
@@ -276,6 +279,7 @@ window.appRegisterKey = async function() {
         const finishResp = await fetch("/register-key-finish", {
             method: "POST",
             body: JSON.stringify({
+				transports: cred.response.getTransports(),
                 attestationObject: attestationObject,
                 clientDataJSON: clientDataJSON,
             }),

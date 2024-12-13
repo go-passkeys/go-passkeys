@@ -82,14 +82,8 @@ button {
   border-width: 1px;
 }
 
-.passkeys {
-}
-
 .passkey {
-  padding: 0.5em;
-}
-
-.passkey-name {
+  margin: 0.5em;
 }
 
 .passkey-date {
@@ -101,6 +95,7 @@ button {
 }
 
 .passkey-info {
+  margin: 0.5em;
   max-height: 0;
   overflow: hidden;
 }
@@ -116,11 +111,7 @@ button {
   padding-bottom: 0.25em;
 }
 
-.passkey-public-data {
+.passkey-info-element-data {
+  color: grey;
   word-break: break-all;
-  color: grey;
-}
-
-.passkey-synced-data {
-  color: grey;
 }

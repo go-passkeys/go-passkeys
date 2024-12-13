@@ -113,6 +113,7 @@ func TestRegistrationFinish(t *testing.T) {
 	}
 
 	reqBody := strings.NewReader(`{
+		"transports": ["hybrid", "internal"],
 		"attestationObject": "` + yubikeyDirectAttestationObject + `",
 		"clientDataJSON": "` + yubikeyDirectClientDataJSON + `"
 	}`)
