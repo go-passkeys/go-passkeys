@@ -105,7 +105,7 @@ button {
 }
 
 .passkey-info.expanded {
-  max-height: 20em;
+  max-height: 60em;
 }
 
 .passkey-info-element {

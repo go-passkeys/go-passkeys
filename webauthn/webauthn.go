@@ -65,6 +65,28 @@ type AttestationObject struct {
 	authData             []byte
 }
 
+// AttestationFormat returns the format purported to be used by the attestation.
+// This can be values such as "packed", "apple", "none", etc.
+func AttestationFormat(attestationObject []byte) (string, error) {
+	d := cbor.NewDecoder(attestationObject)
+	var format string
+	if !d.Map(func(kv *cbor.Decoder) bool {
+		var key string
+		if !kv.String(&key) {
+			return false
+		}
+		switch key {
+		case "fmt":
+			return kv.String(&format)
+		default:
+			return kv.Skip()
+		}
+	}) || !d.Done() {
+		return "", fmt.Errorf("invalid cbor data")
+	}
+	return format, nil
+}
+
 // Format returns the sets of attestation formats.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-defined-attestation-formats

@@ -204,14 +204,16 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		// User is logged in. Display their keys back to them.
 		type userPasskeys struct {
-			ID         string
-			Name       string
-			Algorithm  string
-			Public     string
-			ClientData string
-			CreatedAt  int64
-			BackedUp   bool
-			Transports []string
+			ID                string
+			Name              string
+			Algorithm         string
+			Public            string
+			AttestationObject string
+			AttestationFormat string
+			ClientData        string
+			CreatedAt         int64
+			BackedUp          bool
+			Transports        []string
 		}
 		var passkeys []userPasskeys
 		for _, pk := range u.passkeys {
@@ -231,15 +233,23 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			format, err := webauthn.AttestationFormat(pk.attestationObject)
+			if err != nil {
+				http.Error(w, "Parsing attestation format: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
 			p := userPasskeys{
-				ID:         base64.StdEncoding.EncodeToString(pk.passkeyID),
-				Name:       pk.name,
-				Algorithm:  pk.algorithm.String(),
-				Public:     base64.StdEncoding.EncodeToString(pub),
-				CreatedAt:  pk.createdAt.UnixMilli(),
-				BackedUp:   authObj.Flags.BackedUp(),
-				ClientData: string(pk.clientDataJSON),
-				Transports: pk.transports,
+				ID:                base64.StdEncoding.EncodeToString(pk.passkeyID),
+				Name:              pk.name,
+				Algorithm:         pk.algorithm.String(),
+				Public:            base64.StdEncoding.EncodeToString(pub),
+				CreatedAt:         pk.createdAt.UnixMilli(),
+				BackedUp:          authObj.Flags.BackedUp(),
+				ClientData:        string(pk.clientDataJSON),
+				AttestationFormat: format,
+				AttestationObject: base64.StdEncoding.EncodeToString(pk.attestationObject),
+				Transports:        pk.transports,
 			}
 			passkeys = append(passkeys, p)
 		}
