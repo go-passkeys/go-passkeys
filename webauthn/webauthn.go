@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/ericchiang/go-webauthn/webauthn/internal/cbor"
 )
@@ -125,28 +126,49 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 	return data, nil
 }
 
-// https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion
-func Verify(pub crypto.PublicKey, alg Algorithm, challenge, authData, clientDataJSON, sig []byte) error {
+func (rp *RelyingParty) VerifyAuthentication(pub crypto.PublicKey, alg Algorithm, challenge, clientDataJSON, authData, sig []byte) (*AuthenticationData, error) {
 	clientDataHash := sha256.Sum256(clientDataJSON)
+
+	var clientData clientData
+	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
+		return nil, fmt.Errorf("parsing client data: %v", err)
+	}
+	if clientData.Type != "webauthn.get" {
+		return nil, fmt.Errorf("invalid client data type, expected 'webauthn.get', got '%s'", clientData.Type)
+	}
+	if clientData.Origin != rp.Origin {
+		return nil, fmt.Errorf("invalid client data origin, expected '%s', got '%s'", rp.Origin, clientData.Origin)
+	}
+	if !clientData.Challenge.Equal(challenge) {
+		return nil, fmt.Errorf("invalid client data challenge")
+	}
+
 	data := append([]byte{}, authData...)
 	data = append(data, clientDataHash[:]...)
-
 	if err := verifySignature(pub, alg, data, sig); err != nil {
-		return err
-	}
-	var clientData struct {
-		Challenge clientDataChallenge `json:"challenge"`
-	}
-	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
-		return fmt.Errorf("parsing client data JSON: %v", err)
+		return nil, fmt.Errorf("invalid signature: %v", err)
 	}
 
-	// TODO: validate that the client data JSON has the correct type.
-
-	if !clientData.Challenge.Equal(challenge) {
-		return fmt.Errorf("invalid challenge")
+	rpIDHash := sha256.Sum256([]byte(rp.RPID))
+	if len(authData) < 32 {
+		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}
-	return nil
+	if !bytes.Equal(rpIDHash[:], authData[:32]) {
+		return nil, fmt.Errorf("assertion issued for different relying party")
+	}
+	if len(authData) < 32+1 {
+		return nil, fmt.Errorf("not enough bytes for flag")
+	}
+	flags := Flags(authData[32])
+	if len(authData) < 32+1+4 {
+		return nil, fmt.Errorf("not enough bytes for counter")
+	}
+
+	counter := binary.BigEndian.Uint32(authData[32+1 : 32+1+4])
+	return &AuthenticationData{
+		Flags:   flags,
+		Counter: counter,
+	}, nil
 }
 
 // Format returns the sets of attestation formats.
@@ -416,6 +438,39 @@ func verifySignature(pub crypto.PublicKey, alg Algorithm, data, sig []byte) erro
 // https://www.w3.org/TR/webauthn-3/#authdata-flags
 type Flags byte
 
+// String returns a binary representation of the flags.
+func (f Flags) String() string {
+	var vals []string
+	if f.UserPresent() {
+		vals = append(vals, "UP")
+	}
+	if (byte(f) & (1 << 1)) != 0 {
+		vals = append(vals, "RFU1")
+	}
+	if f.UserVerified() {
+		vals = append(vals, "UV")
+	}
+	if f.BackupEligible() {
+		vals = append(vals, "BE")
+	}
+	if f.BackedUp() {
+		vals = append(vals, "BS")
+	}
+	if (byte(f) & (1 << 5)) != 0 {
+		vals = append(vals, "RFU2")
+	}
+	if f.AttestedCredentialData() {
+		vals = append(vals, "AT")
+	}
+	if f.Extensions() {
+		vals = append(vals, "ED")
+	}
+	if len(vals) == 0 {
+		return "Flags()"
+	}
+	return fmt.Sprintf("Flags(%s)", strings.Join(vals, "|"))
+}
+
 // https://www.w3.org/TR/webauthn-3/#concept-user-present
 func (f Flags) UserPresent() bool {
 	return (byte(f) & 1) != 0
@@ -444,6 +499,22 @@ func (f Flags) AttestedCredentialData() bool {
 // https://www.w3.org/TR/webauthn-3/#authdata-extensions
 func (f Flags) Extensions() bool {
 	return (byte(f) & (1 << 7)) != 0
+}
+
+type AuthenticationData struct {
+	// Various bits of information about this key, such as if it is synced to a
+	// Cloud service.
+	//
+	// https://www.w3.org/TR/webauthn-3/#authdata-flags
+	Flags Flags
+	// Counter is incremented value that is increased every time the key signs a
+	// challenge. This may be zero for authenticators that don't support signing
+	// counters.
+	//
+	// Signature counters are intended to be used to detect cloned credentials.
+	//
+	// https://www.w3.org/TR/webauthn-3/#sctn-sign-counter
+	Counter uint32
 }
 
 // AttestationData holds information about an individual credential. This

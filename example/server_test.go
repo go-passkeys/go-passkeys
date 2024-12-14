@@ -388,7 +388,7 @@ func TestReauth(t *testing.T) {
 	}{
 		Type:      "webauthn.get",
 		Challenge: base64.RawURLEncoding.EncodeToString(respBody.Challenge),
-		Origin:    srv.URL,
+		Origin:    "http://localhost:8080",
 	}
 	clientDataJSON, err := json.Marshal(clientData)
 	if err != nil {

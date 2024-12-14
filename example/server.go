@@ -231,17 +231,6 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Encoding key: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-			attObj, err := webauthn.ParseAttestationObject(pk.attestationObject)
-			if err != nil {
-				http.Error(w, "Parsing attestation object: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			authObj, err := attObj.AuthenticatorData()
-			if err != nil {
-				http.Error(w, "Parsing authenticator data: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-
 			format, err := webauthn.AttestationFormat(pk.attestationObject)
 			if err != nil {
 				http.Error(w, "Parsing attestation format: "+err.Error(), http.StatusInternalServerError)
@@ -254,7 +243,6 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				Algorithm:         pk.algorithm.String(),
 				Public:            base64.StdEncoding.EncodeToString(pub),
 				CreatedAt:         pk.createdAt.UnixMilli(),
-				BackedUp:          authObj.Flags.BackedUp(),
 				ClientData:        string(pk.clientDataJSON),
 				AttestationFormat: format,
 				AttestationObject: base64.StdEncoding.EncodeToString(pk.attestationObject),
@@ -357,7 +345,7 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := webauthn.Verify(p.publicKey, p.algorithm, l.challenge, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err != nil {
+	if _, err := s.rp.VerifyAuthentication(p.publicKey, p.algorithm, l.challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature); err != nil {
 		http.Error(w, "Verifying passkey: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -603,7 +591,7 @@ func (s *server) handleReauthFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := webauthn.Verify(p.publicKey, p.algorithm, re.challenge, req.AuthenticatorData, req.ClientDataJSON, req.Signature); err != nil {
+	if _, err := s.rp.VerifyAuthentication(p.publicKey, p.algorithm, re.challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature); err != nil {
 		http.Error(w, "Verifying passkey: "+err.Error(), http.StatusUnauthorized)
 		return
 	}

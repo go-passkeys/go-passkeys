@@ -66,6 +66,118 @@ func TestVerifyAttestation(t *testing.T) {
 	}
 }
 
+func TestVerifyAuthentication(t *testing.T) {
+	const (
+		UP   = 1
+		RFU1 = 1 << 1
+		UV   = 1 << 2
+		BE   = 1 << 3
+		BS   = 1 << 4
+		RFU2 = 1 << 5
+		AT   = 1 << 6
+		ED   = 1 << 7
+	)
+
+	testCases := []struct {
+		name           string
+		rp             *RelyingParty
+		publicKey      string
+		alg            Algorithm
+		challenge      string
+		clientDataJSON string
+		authData       string
+		signature      string
+
+		wantFlags   Flags
+		wantCounter uint32
+	}{
+		{
+			name: "iCloud Keychain",
+			rp: &RelyingParty{
+				RPID:   "localhost",
+				Origin: "http://localhost:8080",
+			},
+			publicKey:      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAENyvB2asAdRnjlORh0i+qRWaGrywFAGDEpI+2AesrBGyh5KR6VMc7XjfELnqpqGVAVuuow+hi7yDH9XR3a97KYQ==",
+			alg:            ES256,
+			challenge:      "Dq/hvK3bJiDKSuOSSrHFKg==",
+			clientDataJSON: `{"type":"webauthn.get","challenge":"Dq_hvK3bJiDKSuOSSrHFKg","origin":"http://localhost:8080","crossOrigin":false}`,
+			authData:       "SZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2MdAAAAAA==",
+			signature:      "MEUCIQDMI/66BWmFKXyP4jia1s01Bzm5XuaNeH+/NmvX8KaLtwIgeOCSpBTsgxKIBNQpwmgLTGX1tlaEA+npDkyUkTvUceI=",
+			wantFlags:      UP | UV | BE | BS,
+			wantCounter:    0,
+		},
+		{
+			name: "Google Password Manager",
+			rp: &RelyingParty{
+				RPID:   "localhost",
+				Origin: "http://localhost:8080",
+			},
+			publicKey:      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhc/4hoXkAaBsUc5vrE56q/v9S5xa8rA3q5rVZFI2rIAy2H59mtPD+fMeCHUJQ3DOJwxkjESVjEGovXqCMcOtLA==",
+			alg:            ES256,
+			challenge:      "lqIA7pwRP4IreUpXp8k5yw==",
+			clientDataJSON: `{"type":"webauthn.get","challenge":"lqIA7pwRP4IreUpXp8k5yw","origin":"http://localhost:8080","crossOrigin":false}`,
+			authData:       "SZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2MdAAAAAA==",
+			signature:      "MEYCIQDdD7fAAkQB6Jyut40lLFUhLP1U+Ts44VxZrzsCdmbJ3QIhAMDAlBmjRFm/B/7DR1ODoNGrHthXQVqUKnf9SSSaK7lR",
+			wantFlags:      UP | UV | BE | BS,
+		},
+		{
+			name: "YubiKey 5 Series",
+			rp: &RelyingParty{
+				RPID:   "localhost",
+				Origin: "http://localhost:8080",
+			},
+			publicKey:      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwuIDbblRRWb8lOANmAK3w9dppoKQXC2rw7yY6c9W/C5p5XU3NpH55RWYheccEtji/4Yc+zscmwMQN+KrQ/o7/g==",
+			alg:            ES256,
+			challenge:      "jXTEukbfgfYPd0KUi9AEHA==",
+			clientDataJSON: `{"type":"webauthn.get","challenge":"jXTEukbfgfYPd0KUi9AEHA","origin":"http://localhost:8080","crossOrigin":false,"other_keys_can_be_added_here":"do not compare clientDataJSON against a template. See https://goo.gl/yabPex"}`,
+			authData:       "SZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2MFAAAACw==",
+			signature:      "MEUCIQD+CCL//FsMb88xAbqNHRLFtYAwBhG5Z79EUpA+ykG9AgIgHpDIi7BvdEBxU3uVAbbtrcgxZp9xKx/isqBsVW8p3mU=",
+			wantFlags:      UP | UV,
+			wantCounter:    11,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pubDer, err := base64.StdEncoding.DecodeString(tc.publicKey)
+			if err != nil {
+				t.Fatalf("Decoding public key: %v", err)
+			}
+			pub, err := x509.ParsePKIXPublicKey(pubDer)
+			if err != nil {
+				t.Fatalf("Parsing public key: %v", err)
+			}
+
+			challenge, err := base64.StdEncoding.DecodeString(tc.challenge)
+			if err != nil {
+				t.Fatalf("Decoding challenge: %v", err)
+			}
+			authData, err := base64.StdEncoding.DecodeString(tc.authData)
+			if err != nil {
+				t.Fatalf("Decoding auth data: %v", err)
+			}
+			sig, err := base64.StdEncoding.DecodeString(tc.signature)
+			if err != nil {
+				t.Fatalf("Decoding signature: %v", err)
+			}
+
+			clientDataJSON := []byte(tc.clientDataJSON)
+
+			got, err := tc.rp.VerifyAuthentication(pub, tc.alg, challenge, clientDataJSON, authData, sig)
+			if err != nil {
+				t.Fatalf("Verifying authentication: %v", err)
+			}
+
+			if got.Flags != tc.wantFlags {
+				t.Errorf("Authentication returned unexpected flags, got=%v, want=%v", got.Flags, tc.wantFlags)
+			}
+			if got.Counter != tc.wantCounter {
+				t.Errorf("Authentication returned unexpected counter, got=%v, want=%v", got.Counter, tc.wantCounter)
+			}
+		})
+	}
+}
+
 var chromeLocalTestData = `
 o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoM
 dl2NdAAAAAOqbjWZNAR0hPOS2tIy1ddQAECd+IVW0KqKvYjZ4ETlBR1KlAQIDJiABIVggCkgUPXo1Qp
@@ -207,28 +319,5 @@ func TestParseAttestationObjectDirectYubikey5C(t *testing.T) {
 	}
 	if _, err := attest.VerifyPacked(clientDataJSON, &PackedOptions{Metadata: blob}); err != nil {
 		t.Fatalf("Verifying packed data: %v", err)
-	}
-}
-
-var (
-	chromeLoginPublicKey         = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7TuX1/aYvHTE3nfQjsypRWv5f/EdBPga4lQSxcupuzWE/4kNnBBLjR9ONy5MXdl9ZCxBta7Q4BbbaUiVqQPNGQ=="
-	chromeLoginAuthenticatorData = "SZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2MdAAAAAA=="
-	chromeLoginClientJSON        = "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoic2xfMkhTV3RGekpBYWF1RjNUOXpCUSIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MCIsImNyb3NzT3JpZ2luIjpmYWxzZX0="
-	chromeLoginSignature         = "MEQCICeg3UzPEZ+wDyJjDYDfZ8ErqQ6Ol8OOfM36TdxSqCItAiAMhxF1kC1BQX6vjTEwhECmnn8louKMHBxrFDqaKHOC+g=="
-)
-
-func TestVerify(t *testing.T) {
-	pubBytes, _ := base64.StdEncoding.DecodeString(chromeLoginPublicKey)
-	authData, _ := base64.StdEncoding.DecodeString(chromeLoginAuthenticatorData)
-	clientDataJSON, _ := base64.StdEncoding.DecodeString(chromeLoginClientJSON)
-	sig, _ := base64.StdEncoding.DecodeString(chromeLoginSignature)
-	pub, err := x509.ParsePKIXPublicKey(pubBytes)
-	if err != nil {
-		t.Fatalf("Parsing test key: %v", err)
-	}
-	challenge, _ := base64.RawURLEncoding.DecodeString("sl_2HSWtFzJAaauF3T9zBQ")
-
-	if err := Verify(pub, ES256, challenge, authData, clientDataJSON, sig); err != nil {
-		t.Errorf("Verifying signature: %v", err)
 	}
 }
