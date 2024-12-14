@@ -58,7 +58,7 @@ const (
 	FormatPacked = "packed"
 )
 
-type AttestationObject struct {
+type attestationObject struct {
 	format string
 
 	attestationStatement []byte
@@ -87,10 +87,72 @@ func AttestationFormat(attestationObject []byte) (string, error) {
 	return format, nil
 }
 
+type RelyingParty struct {
+	RPID string
+
+	Origin string
+}
+
+func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*AttestationData, error) {
+	var clientData clientData
+	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
+		return nil, fmt.Errorf("parsing client data: %v", err)
+	}
+	if clientData.Type != "webauthn.create" {
+		return nil, fmt.Errorf("invalid client data type, expected 'webauthn.create', got '%s'", clientData.Type)
+	}
+	if clientData.Origin != rp.Origin {
+		return nil, fmt.Errorf("invalid client data origin, expected '%s', got '%s'", rp.Origin, clientData.Origin)
+	}
+	if !clientData.Challenge.Equal(challenge) {
+		return nil, fmt.Errorf("invalid client data challenge")
+	}
+
+	attObj, err := parseAttestationObject(attestationObject)
+	if err != nil {
+		return nil, fmt.Errorf("parsing attestation object: %v", err)
+	}
+
+	data, err := attObj.AuthenticatorData()
+	if err != nil {
+		return nil, fmt.Errorf("parsing authenticator data: %v", err)
+	}
+
+	rpIDHash := sha256.Sum256([]byte(rp.RPID))
+	if data.RPIDHash != rpIDHash {
+		return nil, fmt.Errorf("attestation was generated for a different relying party ID")
+	}
+	return data, nil
+}
+
+// https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion
+func Verify(pub crypto.PublicKey, alg Algorithm, challenge, authData, clientDataJSON, sig []byte) error {
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	data := append([]byte{}, authData...)
+	data = append(data, clientDataHash[:]...)
+
+	if err := verifySignature(pub, alg, data, sig); err != nil {
+		return err
+	}
+	var clientData struct {
+		Challenge clientDataChallenge `json:"challenge"`
+	}
+	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
+		return fmt.Errorf("parsing client data JSON: %v", err)
+	}
+
+	// TODO: validate that the client data JSON has the correct type.
+
+	if !clientData.Challenge.Equal(challenge) {
+		return fmt.Errorf("invalid challenge")
+	}
+	return nil
+}
+
 // Format returns the sets of attestation formats.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-defined-attestation-formats
-func (o *AttestationObject) Format() string {
+func (o *attestationObject) Format() string {
 	return o.format
 }
 
@@ -100,7 +162,7 @@ func (o *AttestationObject) Format() string {
 // attestation statements.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-none-attestation
-func (o *AttestationObject) AuthenticatorData() (*AuthenticatorData, error) {
+func (o *attestationObject) AuthenticatorData() (*AttestationData, error) {
 	return parseAuthData(o.authData)
 }
 
@@ -121,7 +183,7 @@ type PackedOptions struct {
 // https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
 type Packed struct {
 	// Parsed and validated authenticator data.
-	AuthenticatorData *AuthenticatorData
+	AuthenticatorData *AttestationData
 
 	// If true, the data was self attested and signed with the key returned in
 	// authenticator data, rather than an attestation certificate.
@@ -141,7 +203,7 @@ type Packed struct {
 // a packed signature.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
-func (o *AttestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOptions) (*Packed, error) {
+func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOptions) (*Packed, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("options must be provided")
 	}
@@ -384,36 +446,12 @@ func (f Flags) Extensions() bool {
 	return (byte(f) & (1 << 7)) != 0
 }
 
-// https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion
-func Verify(pub crypto.PublicKey, alg Algorithm, challenge, authData, clientDataJSON, sig []byte) error {
-	clientDataHash := sha256.Sum256(clientDataJSON)
-	data := append([]byte{}, authData...)
-	data = append(data, clientDataHash[:]...)
-
-	if err := verifySignature(pub, alg, data, sig); err != nil {
-		return err
-	}
-	var clientData struct {
-		Challenge Challenge `json:"challenge"`
-	}
-	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
-		return fmt.Errorf("parsing client data JSON: %v", err)
-	}
-
-	// TODO: validate that the client data JSON has the correct type.
-
-	if !clientData.Challenge.Equal(challenge) {
-		return fmt.Errorf("invalid challenge")
-	}
-	return nil
-}
-
-// AuthenticatorData holds information about an individual credential. This
+// AttestationData holds information about an individual credential. This
 // data can be verified through attestation statements during registration, but
 // is generally assumed to have been correctly provided by the browser.
 //
 // https://www.w3.org/TR/webauthn-3/#authenticator-data
-type AuthenticatorData struct {
+type AttestationData struct {
 	// SHA-256 hash of the relying party ID. Whereas the "origin" is always the
 	// full base URL seen by the browser during registration, with scheme and
 	// optional port, the RP ID can be a domain or URL with some restrictions.
@@ -465,7 +503,7 @@ type AuthenticatorData struct {
 
 // https://developers.yubico.com/FIDO/yubico-metadata.json
 
-// ParseAttestationObject parses the result of a key creation event. This
+// parseAttestationObject parses the result of a key creation event. This
 // includes information such as the public key, key ID, RP ID hash, etc.
 //
 //	const cred = await navigator.credentials.create({
@@ -476,7 +514,7 @@ type AuthenticatorData struct {
 //	console.log(cred.response.attestationObject);
 //
 // https://www.w3.org/TR/webauthn-3/#attestation-object
-func ParseAttestationObject(b []byte) (*AttestationObject, error) {
+func parseAttestationObject(b []byte) (*attestationObject, error) {
 	// TODO: compare hash of ID to relying party.
 
 	d := cbor.NewDecoder(b)
@@ -506,7 +544,7 @@ func ParseAttestationObject(b []byte) (*AttestationObject, error) {
 	if len(authData) == 0 {
 		return nil, fmt.Errorf("no auth data")
 	}
-	return &AttestationObject{
+	return &attestationObject{
 		format:               format,
 		attestationStatement: attest,
 		authData:             authData,
@@ -558,8 +596,8 @@ func parsePacked(b []byte) (*packed, error) {
 	return p, nil
 }
 
-func parseAuthData(b []byte) (*AuthenticatorData, error) {
-	var ad AuthenticatorData
+func parseAuthData(b []byte) (*AttestationData, error) {
+	var ad AttestationData
 	if len(b) < 32 {
 		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}
@@ -609,23 +647,23 @@ func parseAuthData(b []byte) (*AuthenticatorData, error) {
 	return &ad, nil
 }
 
-// Challenge is a wrapper on top of a WebAuthn challenge.
+// clientDataChallenge is a wrapper on top of a WebAuthn challenge.
 //
 // Note that the specification recommends that "Challenges SHOULD therefore be
 // at least 16 bytes long."
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-cryptographic-challenges
-type Challenge []byte
+type clientDataChallenge []byte
 
 // Equal compares the challenge value against a set of bytes.
-func (c Challenge) Equal(b []byte) bool {
+func (c clientDataChallenge) Equal(b []byte) bool {
 	return subtle.ConstantTimeCompare([]byte(c), b) == 1
 }
 
 // UnmarshalJSON implements the challenge encoding used by clientDataJSON.
 //
 // https://www.w3.org/TR/webauthn-3/#dom-authenticatorresponse-clientdatajson
-func (c *Challenge) UnmarshalJSON(b []byte) error {
+func (c *clientDataChallenge) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return fmt.Errorf("challenge value doesn't parse into string: %v", err)
@@ -634,11 +672,11 @@ func (c *Challenge) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	*c = Challenge(data)
+	*c = clientDataChallenge(data)
 	return nil
 }
 
-// ClientData holds information passed to the authenticator for both registration
+// clientData holds information passed to the authenticator for both registration
 // and authentication.
 //
 // https://www.w3.org/TR/webauthn-3/#dictionary-client-data
@@ -646,10 +684,10 @@ func (c *Challenge) UnmarshalJSON(b []byte) error {
 // JSON tags are added to provide unmarshalling from the clientDataJSON format.
 //
 // https://www.w3.org/TR/webauthn-3/#dom-authenticatorresponse-clientdatajson
-type ClientData struct {
-	Type        string    `json:"type"`
-	Challenge   Challenge `json:"challenge"`
-	Origin      string    `json:"origin"`
-	TopOrigin   string    `json:"topOrigin"`
-	CrossOrigin bool      `json:"crossOrigin"`
+type clientData struct {
+	Type        string              `json:"type"`
+	Challenge   clientDataChallenge `json:"challenge"`
+	Origin      string              `json:"origin"`
+	TopOrigin   string              `json:"topOrigin"`
+	CrossOrigin bool                `json:"crossOrigin"`
 }

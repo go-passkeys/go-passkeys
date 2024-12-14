@@ -9,6 +9,63 @@ import (
 	"testing"
 )
 
+func TestVerifyAttestation(t *testing.T) {
+	testCases := []struct {
+		name              string
+		rp                *RelyingParty
+		challenge         string
+		clientData        string
+		attestationObject string
+	}{
+		{
+			name: "YubiKey 5 Series",
+			rp: &RelyingParty{
+				RPID:   "localhost",
+				Origin: "http://localhost:8080",
+			},
+			challenge:         "-ium4NdjLD6Acqy9p66NtA",
+			clientData:        `{"type":"webauthn.create","challenge":"-ium4NdjLD6Acqy9p66NtA","origin":"http://localhost:8080","crossOrigin":false}`,
+			attestationObject: "o2NmbXRmcGFja2VkZ2F0dFN0bXSjY2FsZyZjc2lnWEgwRgIhAL7ex0WTU1ZpLSRhoTxNxaYbwYcaNEA/h9eJEp0weJEqAiEA1vMTwi4bkvkE/gzQDO1seRyw0SupYth902MWOpZ0TDpjeDVjgVkC3TCCAtkwggHBoAMCAQICCQCkQGRCP4Vr/DANBgkqhkiG9w0BAQsFADAuMSwwKgYDVQQDEyNZdWJpY28gVTJGIFJvb3QgQ0EgU2VyaWFsIDQ1NzIwMDYzMTAgFw0xNDA4MDEwMDAwMDBaGA8yMDUwMDkwNDAwMDAwMFowbzELMAkGA1UEBhMCU0UxEjAQBgNVBAoMCVl1YmljbyBBQjEiMCAGA1UECwwZQXV0aGVudGljYXRvciBBdHRlc3RhdGlvbjEoMCYGA1UEAwwfWXViaWNvIFUyRiBFRSBTZXJpYWwgMTExMzg2NjQwNDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABPkOtta+hbyNLleVf1puWkTqbHzBJz+y42wVbN881zPGfYHty7riyxT4c3fcoXK+bl1/XE7f/2D3I3WT9ILQVYOjgYEwfzATBgorBgEEAYLECg0BBAUEAwUHATAiBgkrBgEEAYLECgIEFTEuMy42LjEuNC4xLjQxNDgyLjEuNzATBgsrBgEEAYLlHAIBAQQEAwIFIDAhBgsrBgEEAYLlHAEBBAQSBBAZCDw9g4NLGLwDjxyasv0bMAwGA1UdEwEB/wQCMAAwDQYJKoZIhvcNAQELBQADggEBAHzCOWZTA+e+ni1+kmfydBAZgdLyWGbYLQxlJtjd00qbh6M41UaYuRm12eKm3uYDgPT1BnVqqGN69k/1+P91O+knuRBfb48El12Up1hfzyON1UKGgBA6IdmghqYbK+X5baMMLGdsZ1nLKEWjVRecjLg79GwHy9HJ25j+Gb7+yNZMJdfgMJvfrecD35Tgmw+3fTCbzpnlW9Sp/LNdkHjdECaicue3MdhtrwaVmNfyVNvU5mqHzQAH2zf4/TsTZKdx2aIDFmqZZAartwD7RskFfQpnN0CWU6uCaBS0ECgDPLLW3q39mfvJ/y2rHPhaSWue85+2lNK+NJPP43ZsNrA7Rw5oYXV0aERhdGFYwkmWDeWIDoxodDQXD2R2YFuP5K65ooYyx5lc87qDHZdjxQAAAAMZCDw9g4NLGLwDjxyasv0bADDC4gNtuVFFZvyU4A2YDTFDSAOHTXQfTVUeXPpK2xTdoFx6LnSx3o2dcheLtBrEj0ylAQIDJiABIVggwuIDbblRRWb8lOANmAK3w9dppoKQXC2rw7yY6c9W/C4iWCBp5XU3NpH55RWYheccEtji/4Yc+zscmwMQN+KrQ/o7/qFrY3JlZFByb3RlY3QD",
+		},
+		{
+			name: "iCloud Keychain",
+			rp: &RelyingParty{
+				RPID:   "localhost",
+				Origin: "http://localhost:8080",
+			},
+			challenge:         "Z_napzbTBbiJZpDJy2_x2g",
+			clientData:        `{"type":"webauthn.create","challenge":"Z_napzbTBbiJZpDJy2_x2g","origin":"http://localhost:8080","crossOrigin":false,"other_keys_can_be_added_here":"do not compare clientDataJSON against a template. See https://goo.gl/yabPex"}`,
+			attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViYSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NdAAAAAPv8MAcVTk7MjAtuAgVX170AFMC0tFpykeOylx0hbDMMaBciaCL5pQECAyYgASFYIKsaYc3GYw62BgN5xbZzvqFN79cLPWo4SU2aJQIFNZXBIlggkfCM3E0nCG0SSc3pu1bCcfYVHWwXzYeh8WCUBDDN3v4=",
+		},
+		{
+			name: "Google Password Manager",
+			rp: &RelyingParty{
+				RPID:   "localhost",
+				Origin: "http://localhost:8080",
+			},
+			challenge:         "ZnTNLi5zseMQowTP5bnrhQ",
+			clientData:        `{"type":"webauthn.create","challenge":"ZnTNLi5zseMQowTP5bnrhQ","origin":"http://localhost:8080","crossOrigin":false}`,
+			attestationObject: "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NdAAAAAOqbjWZNAR0hPOS2tIy1ddQAEJdiX6sHQ7x/IRv7PJqmJCqlAQIDJiABIVgghc/4hoXkAaBsUc5vrE56q/v9S5xa8rA3q5rVZFI2rIAiWCAy2H59mtPD+fMeCHUJQ3DOJwxkjESVjEGovXqCMcOtLA==",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			challenge, err := base64.RawURLEncoding.DecodeString(tc.challenge)
+			if err != nil {
+				t.Fatalf("Parsing challenge: %v", err)
+			}
+			attestationObject, err := base64.StdEncoding.DecodeString(tc.attestationObject)
+			if err != nil {
+				t.Fatalf("Parsing attestation object: %v", err)
+			}
+			clientDataJSON := []byte(tc.clientData)
+			if _, err := tc.rp.VerifyAttestation(challenge, clientDataJSON, attestationObject); err != nil {
+				t.Errorf("Verifying attestation: %v", err)
+			}
+		})
+	}
+}
+
 var chromeLocalTestData = `
 o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoM
 dl2NdAAAAAOqbjWZNAR0hPOS2tIy1ddQAECd+IVW0KqKvYjZ4ETlBR1KlAQIDJiABIVggCkgUPXo1Qp
@@ -20,7 +77,7 @@ func TestParseAttestationObjectChrome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parsing test data: %v", err)
 	}
-	if _, err := ParseAttestationObject(data); err != nil {
+	if _, err := parseAttestationObject(data); err != nil {
 		t.Errorf("Parsing attestation object: %v", err)
 	}
 }
@@ -55,7 +112,7 @@ func TestParseAttestationObjectChromeDirect(t *testing.T) {
 		t.Fatalf("parsing metadata blob: %v", err)
 	}
 
-	attest, err := ParseAttestationObject(data)
+	attest, err := parseAttestationObject(data)
 	if err != nil {
 		t.Fatalf("Parsing attestation object: %v", err)
 	}
@@ -65,7 +122,7 @@ func TestParseAttestationObjectChromeDirect(t *testing.T) {
 	if _, err := attest.VerifyPacked(clientDataJSON, &PackedOptions{Metadata: blob}); err != nil {
 		t.Fatalf("Verifying packed data: %v", err)
 	}
-	var clientData ClientData
+	var clientData clientData
 	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
 		t.Fatalf("Parsing client data: %v", err)
 	}
@@ -87,7 +144,7 @@ func TestParseAttestationObjectNoneYubikey5C(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parsing test data: %v", err)
 	}
-	attest, err := ParseAttestationObject(data)
+	attest, err := parseAttestationObject(data)
 	if err != nil {
 		t.Fatalf("Parsing attestation object: %v", err)
 	}
@@ -141,7 +198,7 @@ func TestParseAttestationObjectDirectYubikey5C(t *testing.T) {
 		t.Fatalf("parsing metadata blob: %v", err)
 	}
 
-	attest, err := ParseAttestationObject(data)
+	attest, err := parseAttestationObject(data)
 	if err != nil {
 		t.Fatalf("Parsing attestation object: %v", err)
 	}

@@ -27,6 +27,10 @@ func newTestServer(t *testing.T) (*http.Client, *httptest.Server, *server) {
 	s := &server{
 		staticFS: staticFSEmbed,
 		storage:  newTestStorage(t),
+		rp: &webauthn.RelyingParty{
+			RPID:   "localhost",
+			Origin: "http://localhost:8080",
+		},
 	}
 
 	srv := httptest.NewServer(s)
@@ -501,7 +505,7 @@ func TestRegisterKey(t *testing.T) {
 	}
 	ch := base64.RawURLEncoding.EncodeToString(respData.Challenge)
 
-	clientDataJSON := `{"type":"webauthn.create","challenge":"` + ch + `","origin":"` + srv.URL + `","crossOrigin":false}`
+	clientDataJSON := `{"type":"webauthn.create","challenge":"` + ch + `","origin":"http://localhost:8080","crossOrigin":false}`
 
 	finishReqBodyBytes := strings.NewReader(`{
 		"attestationObject": "` + yubikeyDirectAttestationObject + `",

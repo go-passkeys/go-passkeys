@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"crypto/x509"
 	"embed"
 	"encoding/base64"
@@ -15,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,6 +45,10 @@ func main() {
 	if watch {
 		staticFS = os.DirFS(".")
 	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		log.Fatalf("Splitting host and port: %v", err)
+	}
 
 	ctx := context.Background()
 	st, err := newStorage(ctx, dbPath)
@@ -55,6 +59,10 @@ func main() {
 	s := &server{
 		storage:  st,
 		staticFS: staticFS,
+		rp: &webauthn.RelyingParty{
+			RPID:   host,
+			Origin: "http://" + addr,
+		},
 	}
 	log.Printf("Listening on %s", addr)
 	log.Fatal(http.ListenAndServe(":8080", s))
@@ -97,6 +105,7 @@ var staticFSEmbed embed.FS
 type server struct {
 	staticFS fs.FS
 	storage  *storage
+	rp       *webauthn.RelyingParty
 
 	once    sync.Once // Guards handler.
 	handler http.Handler
@@ -451,30 +460,15 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	att, err := webauthn.ParseAttestationObject(req.AttestationObject)
+	authData, err := s.rp.VerifyAttestation(reg.challenge, req.ClientDataJSON, req.AttestationObject)
 	if err != nil {
-		http.Error(w, "Failed to parse attestation object: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	authData, err := att.AuthenticatorData()
-	if err != nil {
-		http.Error(w, "Parsing authenticator data: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Failed to verify attestation: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	passkeyName := "Passkey"
 	if name, ok := webauthn.AAGUIDName(authData.AAGUID); ok {
 		passkeyName = name
-	}
-
-	var clientData webauthn.ClientData
-	if err := json.Unmarshal(req.ClientDataJSON, &clientData); err != nil {
-		http.Error(w, "Parsing client data: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if subtle.ConstantTimeCompare([]byte(clientData.Challenge), reg.challenge) != 1 {
-		http.Error(w, "Invalid challenge", http.StatusBadRequest)
-		return
 	}
 
 	p := &passkey{
@@ -710,30 +704,14 @@ func (s *server) handleNewKeyFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	att, err := webauthn.ParseAttestationObject(req.AttestationObject)
+	authData, err := s.rp.VerifyAttestation(reg.challenge, req.ClientDataJSON, req.AttestationObject)
 	if err != nil {
-		http.Error(w, "Failed to parse attestation object: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Failed to verify attestation: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	authData, err := att.AuthenticatorData()
-	if err != nil {
-		http.Error(w, "Parsing authenticator data: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	passkeyName := "Passkey"
 	if name, ok := webauthn.AAGUIDName(authData.AAGUID); ok {
 		passkeyName = name
-	}
-
-	var clientData webauthn.ClientData
-	if err := json.Unmarshal(req.ClientDataJSON, &clientData); err != nil {
-		http.Error(w, "Parsing client data: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if subtle.ConstantTimeCompare([]byte(clientData.Challenge), reg.challenge) != 1 {
-		http.Error(w, "Invalid challenge", http.StatusBadRequest)
-		return
 	}
 
 	p := &passkey{
