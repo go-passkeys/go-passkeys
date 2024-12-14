@@ -455,7 +455,7 @@ func (s *server) handleRegistrationFinish(w http.ResponseWriter, r *http.Request
 	}
 
 	passkeyName := "Passkey"
-	if name, ok := webauthn.AAGUIDName(authData.AAGUID); ok {
+	if name, ok := authData.AAGUID.Name(); ok {
 		passkeyName = name
 	}
 
@@ -698,7 +698,7 @@ func (s *server) handleNewKeyFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	passkeyName := "Passkey"
-	if name, ok := webauthn.AAGUIDName(authData.AAGUID); ok {
+	if name, ok := authData.AAGUID.Name(); ok {
 		passkeyName = name
 	}
 

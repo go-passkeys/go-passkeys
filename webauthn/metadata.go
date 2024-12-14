@@ -11,7 +11,13 @@ import (
 // https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#authenticator-attestation-guid-aaguid-typedef
 type AAGUID [16]byte
 
-func AAGUIDName(a AAGUID) (string, bool) {
+// Name attemps to determine the human presentable name of the AAGUID, such as
+// "YubiKey 5 Series", "iCloud Keychain", or "Google Password Manager".
+//
+// Names are gathered from a number of sources including:
+//   * https://github.com/passkeydeveloper/passkey-authenticator-aaguids
+//   * https://fidoalliance.org/metadata/
+func (a AAGUID) Name() (string, bool) {
 	// The "passkey-authenticator-aaguids" repo is hand maintained and assumed to
 	// have slightly more human-readable names. Prefer this.
 	if name, ok := passkeyAuthenticatorAAGUIDs[a]; ok {
@@ -33,6 +39,7 @@ func mustParseAAGUID(s string) AAGUID {
 	return aaguid
 }
 
+// ParseAAGUID parses a formatted AAGUID (e.g. "7a98c250-6808-11cf-b73b-00aa00b677a7").
 func ParseAAGUID(s string) (AAGUID, error) {
 	var a AAGUID
 	err := a.UnmarshalText([]byte(s))
@@ -54,14 +61,19 @@ func (a AAGUID) marshalText() []byte {
 	return b
 }
 
+// String returns a formatted AAGUID.
 func (a AAGUID) String() string {
 	return string(a.marshalText())
 }
 
+// MarshalText encodes the AAGUID in its string representation, and can be used
+// with JSON encoding.
 func (a AAGUID) MarshalText() ([]byte, error) {
 	return a.marshalText(), nil
 }
 
+// UnmarshalText parses an AAGUID from its string representation, and can be
+// used for parsing JSON document, such as the FIDO Metadata Service.
 func (a *AAGUID) UnmarshalText(s []byte) error {
 	if len(s) != 36 {
 		return fmt.Errorf("expected aaguid string of length 36, got %d", len(s))
