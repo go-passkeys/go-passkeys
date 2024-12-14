@@ -209,7 +209,15 @@ window.appReauth = async function() {
             err(await finishResp.text());
             return;
         }
-		alert("Reauthenticated successfully");
+
+		const dec = new TextDecoder();
+
+		document.getElementById("reauth-challenge").textContent = body.challenge;
+		document.getElementById("reauth-client-data").textContent = dec.decode(cred.response.clientDataJSON);
+		document.getElementById("reauth-auth-data").textContent = authenticatorData;
+		document.getElementById("reauth-signature").textContent = signature;
+		document.getElementById("reauth-user-handle").textContent = userHandle;
+		document.getElementById("reauth-dialog").setAttribute("open", "");
     } catch (error) {
         err(error);
     }

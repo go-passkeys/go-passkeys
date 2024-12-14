@@ -7,6 +7,24 @@
     <div id="user">
 	  <h1>WebAuthn example app</h1>
 	  <h2>Hello, {{.Username}}</h2>
+      <dialog id="reauth-dialog">
+        <h3>Success</h3>
+        <div class="passkey-info-element">
+          <div>Challenge</div>
+          <div id="reauth-challenge" class="reauth-element-data"></div>
+          <div>Client data</div>
+          <div id="reauth-client-data" class="reauth-element-data"></div>
+          <div>Authenticator data</div>
+          <div id="reauth-auth-data" class="reauth-element-data"></div>
+          <div>Signature</div>
+          <div id="reauth-signature" class="reauth-element-data"></div>
+          <div>User handle</div>
+          <div id="reauth-user-handle" class="reauth-element-data"></div>
+        </div>
+        <form method="dialog">
+         <button>OK</button>
+        </form>
+      </dialog>
 	  <h2>Passkeys</h2>
       <p>Passkeys associated with your account.</p>
       <div class="passkeys">
