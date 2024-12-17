@@ -50,6 +50,12 @@ function appHideError() {
 }
 window.appHideError = appHideError;
 
+function appHideReauth() {
+  const ele = document.getElementById("reauth-dialog");
+  ele.style.visibility = "hidden";
+}
+window.appHideReauth = appHideReauth;
+
 window.appRegister = async function() {
 	appHideError();
     const username = document.getElementById("register_username").value;
@@ -189,6 +195,7 @@ window.appLogin = async function() {
 window.appReauth = async function() {
 	appHideError();
     try {
+		document.getElementById("reauth-dialog").style.visibility = "hidden";
         const resp = await fetch("/reauth-start", {
             method: "POST",
             body: JSON.stringify({}),
@@ -200,16 +207,18 @@ window.appReauth = async function() {
 
         const body = await resp.json();
         const challenge = Uint8Array.from(atob(body.challenge), c => c.charCodeAt(0));
-		const creds = body.credentials.map((cred) => {
-			return {
-			    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
-				type: "public-key",
-				transports: cred.transports,
-			};
-		});
 
 		const hints = Array.from(
 			document.querySelectorAll(".reauth-hint:checked")).map((el) => el.value);
+		const creds = Array.from(document.getElementsByClassName("reauth-key-id")).
+			filter((el) => el.checked).
+			map((el) => {
+                return {
+				  id: Uint8Array.from(atob(el.getAttribute("value")), c => c.charCodeAt(0)),
+  			      type: "public-key",
+				  transports: el.getAttribute("data-transport").split(/[ ,]+/).filter((s) => s !== ''),
+				};
+			});
 
 		const opts = {
 		   hints: hints,
@@ -250,7 +259,7 @@ window.appReauth = async function() {
 		document.getElementById("reauth-auth-data").textContent = authenticatorData;
 		document.getElementById("reauth-signature").textContent = signature;
 		document.getElementById("reauth-user-handle").textContent = userHandle;
-		document.getElementById("reauth-dialog").setAttribute("open", "");
+		document.getElementById("reauth-dialog").style.visibility = "visible";
     } catch (error) {
         err(error);
     }
