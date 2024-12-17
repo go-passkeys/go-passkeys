@@ -24,6 +24,26 @@ window.addEventListener("load", (event) => {
 	});
 });
 
+window.addEventListener("load", (event) => {
+	const addkeyMore = document.getElementById("addkey-more");
+	if (addkeyMore === null) {
+		return;
+	}
+	addkeyMore.addEventListener("click", (event) => {
+		document.getElementById("addkey-info").classList.toggle("expanded");
+	});
+});
+
+window.addEventListener("load", (event) => {
+	const reauthMore = document.getElementById("reauth-more");
+	if (reauthMore === null) {
+		return;
+	}
+	reauthMore.addEventListener("click", (event) => {
+		document.getElementById("reauth-info").classList.toggle("expanded");
+	});
+});
+
 function appHideError() {
   const ele = document.getElementById("error");
   ele.style.visibility = "hidden";
@@ -54,16 +74,21 @@ window.appRegister = async function() {
         const challenge = Uint8Array.from(atob(body.challenge), c => c.charCodeAt(0));
         const userID = Uint8Array.from(atob(body.userID), c => c.charCodeAt(0));
 
+		const attestation = document.querySelector("input[name='attestation']:checked").value;
+		const attestationFormats = Array.from(
+			document.querySelectorAll(".attestation-format:checked")).map((el) => el.value);
+
         // https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredential
         // https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialCreationOptions
-        let cred = await navigator.credentials.create({
+        const opts = {
             publicKey: {
                 challenge: challenge,
                 rp: {
                     id: "localhost",
                     name: "go-webauthn",
                 },
-                attestation: "direct",
+                attestation: attestation,
+				attestationFormats: attestationFormats,
                 user: {
                     id: userID,
                     name: username,
@@ -86,7 +111,9 @@ window.appRegister = async function() {
                     residentKey: "required",
                 },
             },
-        });
+        };
+		console.log(opts);
+        let cred = await navigator.credentials.create(opts);
 
         const attestationObject = btoa(String.fromCharCode(...new Uint8Array(cred.response.attestationObject)));
         const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
@@ -180,16 +207,22 @@ window.appReauth = async function() {
 				transports: cred.transports,
 			};
 		});
-		console.log(creds);
 
-		const cred = await navigator.credentials.get({
+		const hints = Array.from(
+			document.querySelectorAll(".reauth-hint:checked")).map((el) => el.value);
+
+		const opts = {
+		   hints: hints,
            publicKey: {
 			   challenge: challenge,
                rpId: "localhost",
                userVerification: "required",
 			   allowcredentials: creds,
 		   },
-		});
+		};
+		console.log(opts);
+
+		const cred = await navigator.credentials.get(opts);
 
         const authenticatorData = btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData)));
         const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
@@ -246,9 +279,13 @@ window.appRegisterKey = async function() {
 			};
 		});
 
+		const attestation = document.querySelector("input[name='attestation']:checked").value;
+		const attestationFormats = Array.from(
+			document.querySelectorAll(".attestation-format:checked")).map((el) => el.value);
+
         // https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredential
         // https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialCreationOptions
-        let cred = await navigator.credentials.create({
+        const opts = {
             publicKey: {
                 challenge: challenge,
 				excludeCredentials: creds,
@@ -256,7 +293,8 @@ window.appRegisterKey = async function() {
                     id: "localhost",
                     name: "go-webauthn",
                 },
-                attestation: "direct",
+                attestation: attestation,
+				attestationFormats: attestationFormats,
                 user: {
                     id: userID,
                     name: body.username,
@@ -279,7 +317,9 @@ window.appRegisterKey = async function() {
                     residentKey: "required",
                 },
             },
-        });
+        }
+		console.log(opts);
+        const cred = await navigator.credentials.create(opts);
 
         const attestationObject = btoa(String.fromCharCode(...new Uint8Array(cred.response.attestationObject)));
         const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));

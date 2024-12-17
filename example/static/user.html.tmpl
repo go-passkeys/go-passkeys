@@ -6,7 +6,12 @@
   <body>
     <div id="user">
 	  <h1>WebAuthn example app</h1>
-	  <h2>Hello, {{.Username}}</h2>
+	  <div id="navbar">
+        <div>{{.Username}}</div>
+        <a href="/logout">
+        <span class="material-symbols-outlined">logout</span>
+        </a>
+      </div>
       <dialog id="reauth-dialog">
         <h3>Success</h3>
         <div class="passkey-info-element">
@@ -72,14 +77,40 @@
         </div>
         {{ end }}
       </div>
-	  <button type="button" onclick="appRegisterKey()">Add passkey</button>
-	  <h2>Reauth</h2>
+      <div id="addkey">
+	    <button type="button" onclick="appRegisterKey()">Add passkey</button>
+        <span id="addkey-more" class="material-symbols-outlined">
+        page_info
+        </span>
+      </div>
+      {{ template "create.html.tmpl" }}
       <p>Challenge your passkeys.</p>
-      <button type="button", onclick="appReauth()">Reauthenticate</button>
-	  <h2>Logout</h2>
-      <a href="/logout">
-        <button>Logout</button>
-      </a>
+      <div id="reauth">
+        <button type="button" onclick="appReauth()">Reauthenticate</button>
+        <span id="reauth-more" class="material-symbols-outlined">
+        page_info
+        </span>
+      </div>
+      <div id="reauth-info">
+        <div>
+          <label>Hints</label>
+          <a href=""https://www.w3.org/TR/webauthn-3/#enum-hints>
+            <span class="material-symbols-outlined attestation-link">link</span>
+          </a>
+          <div>
+            <input type="checkbox" class="reauth-hint" value="security-key" />
+            <label>security-key</label>
+          </div>
+          <div>
+            <input type="checkbox" class="reauth-hint" value="client-device" />
+            <label>client-device</label>
+          </div>
+          <div>
+            <input type="checkbox" class="reauth-hint" value="hybrid" />
+            <label>hybrid</label>
+          </div>
+        </div>
+      </div>
       <div id="error">
        <span class="material-icons" onclick="appHideError()">
         close

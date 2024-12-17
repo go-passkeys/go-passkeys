@@ -37,6 +37,18 @@ h1 {
   margin: 0em;
 }
 
+#register_username {
+  border-radius: 0.3em;
+  border-style: solid;
+  border-color: steelblue;
+  box-sizing: border-box;
+  padding-left: 0.5em;
+  height: 2.5em;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  width: 100%;
+}
+
 table {
 	table-layout: fixed;
 }
@@ -53,18 +65,6 @@ td {
 span {
   cursor: pointer;
   float: right;
-}
-
-input {
-  border-radius: 0.3em;
-  border-style: solid;
-  border-color: steelblue;
-  box-sizing: border-box;
-  padding-left: 0.5em;
-  height: 2.5em;
-  margin-top: 0.5em;
-  margin-bottom: 0.5em;
-  width: 100%;
 }
 
 button {
@@ -131,4 +131,75 @@ button {
   color: grey;
   padding-bottom: 0.5em;
   word-break: break-all;
+}
+
+#reauth {
+  display: flex;
+}
+
+#reauth > span {
+  margin-top: auto;
+  margin-bottom: auto;
+  margin-left: 0.5em;
+}
+
+#reauth-info {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease-in-out;
+  -webkit-transition: max-height 0.2s ease-in-out;
+}
+
+#reauth-info.expanded {
+  max-height: 20em;
+}
+
+#addkey {
+  display: flex;
+}
+
+#addkey > span {
+  margin-top: auto;
+  margin-bottom: auto;
+  margin-left: 0.5em;
+}
+
+#navbar {
+  display: flex;
+  height: 2em;
+}
+
+#navbar > div {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+#navbar > a {
+  margin-top: auto;
+  margin-bottom: auto;
+  margin-left: auto;
+}
+
+#addkey-info {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease-in-out;
+  -webkit-transition: max-height 0.2s ease-in-out;
+}
+
+#addkey-info.expanded {
+  max-height: 20em;
+}
+
+#attestation-select {
+  height: 2em;
+}
+
+.addkey-info-section {
+  margin-bottom: 0.5em;
+}
+
+.attestation-link {
+  float: none;
+  font-size: 18px;
 }

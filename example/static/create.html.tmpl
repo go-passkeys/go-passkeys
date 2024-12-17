@@ -1,0 +1,48 @@
+<div id="addkey-info">
+  <div id="attestation-radio" class="addkey-info-section">
+    <label>Attestation</label>
+    <a href="https://www.w3.org/TR/webauthn-3/#enum-attestation-convey">
+      <span class="material-symbols-outlined attestation-link">link</span>
+    </a>
+    <div>
+      <input type="radio" name="attestation" value="none" />
+      <label>none</label>
+    </div>
+    <div>
+      <input type="radio" name="attestation" value="direct" />
+      <label>direct</label>
+    </div>
+    <div>
+      <input type="radio" name="attestation" value="enterprise" />
+      <label>enterprise</label>
+    </div>
+    <div>
+      <input type="radio" name="attestation" value="indirect" checked />
+      <label>indirect</label>
+    </div>
+  </div>
+
+  <div id="attestation-formats-checkbox" class="addkey-info-section">
+    <label>Attestation formats</label>
+    <a href="https://www.iana.org/assignments/webauthn/webauthn.xhtml#webauthn-attestation-statement-format-ids">
+      <span class="material-symbols-outlined attestation-link">link</span>
+    </a>
+    <div>
+      <input type="checkbox" class="attestation-format" value="packed" />
+      <label>packed</label>
+    </div>
+    <div>
+      <input type="checkbox" class="attestation-format" value="tpm" />
+      <label>tpm</label>
+    </div>
+    <div>
+      <!--- This doesn't appear to do anything: https://forums.developer.apple.com/forums/thread/713195 --->
+      <input type="checkbox" class="attestation-format" value="apple" />
+      <label>apple</label>
+    </div>
+    <div>
+      <input type="checkbox" class="attestation-format" value="none" />
+      <label>none</label>
+    </div>
+  </div>
+</div>

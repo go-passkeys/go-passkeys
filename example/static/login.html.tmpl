@@ -15,7 +15,13 @@
       <p>Register an account with a passkey.</p>
       <div>
         <input type="text" id="register_username" name="username" placeholder="Username" required/>
-	    <button type="button" onclick="appRegister()">Register</button>
+        <div id="addkey">
+	      <button type="button" onclick="appRegister()">Register</button>
+          <span id="addkey-more" class="material-symbols-outlined">
+          page_info
+          </span>
+        </div>
+        {{ template "create.html.tmpl" }}
       </div>
       <div id="error">
        <span class="material-icons" onclick="appHideError()">
