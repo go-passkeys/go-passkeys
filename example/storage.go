@@ -11,7 +11,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/ericchiang/go-webauthn/webauthn"
+	"github.com/go-passkeys/go-passkeys/webauthn"
 
 	_ "github.com/mattn/go-sqlite3" // Register driver.
 )

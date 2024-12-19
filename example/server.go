@@ -23,7 +23,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/ericchiang/go-webauthn/webauthn"
+	"github.com/go-passkeys/go-passkeys/webauthn"
 )
 
 func main() {

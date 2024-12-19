@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ericchiang/go-webauthn/webauthn/internal/cbor"
+	"github.com/go-passkeys/go-passkeys/webauthn/internal/cbor"
 )
 
 var idFIDOGenCEAAGUIDOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 4}

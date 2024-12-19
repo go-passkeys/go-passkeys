@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ericchiang/go-webauthn/webauthn"
+	"github.com/go-passkeys/go-passkeys/webauthn"
 	"github.com/google/go-cmp/cmp"
 )
 

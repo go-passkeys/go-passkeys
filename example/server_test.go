@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ericchiang/go-webauthn/webauthn"
+	"github.com/go-passkeys/go-passkeys/webauthn"
 )
 
 func newTestServer(t *testing.T) (*http.Client, *httptest.Server, *server) {
