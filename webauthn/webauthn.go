@@ -151,14 +151,9 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
 
-	data, err := attObj.AuthenticatorData()
+	data, err := parseAuthData(attObj.authData, rp.RPID)
 	if err != nil {
 		return nil, fmt.Errorf("parsing authenticator data: %v", err)
-	}
-
-	rpIDHash := sha256.Sum256([]byte(rp.RPID))
-	if data.RPIDHash != rpIDHash {
-		return nil, fmt.Errorf("attestation was generated for a different relying party ID")
 	}
 	return data, nil
 }
@@ -193,14 +188,9 @@ func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attes
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
 
-	data, err := attObj.VerifyPacked(clientDataJSON, opts)
+	data, err := attObj.VerifyPacked(rp.RPID, clientDataJSON, opts)
 	if err != nil {
 		return nil, fmt.Errorf("parsing authenticator data: %v", err)
-	}
-
-	rpIDHash := sha256.Sum256([]byte(rp.RPID))
-	if data.AttestationData.RPIDHash != rpIDHash {
-		return nil, fmt.Errorf("attestation was generated for a different relying party ID")
 	}
 	return data, nil
 }
@@ -287,16 +277,6 @@ func (o *attestationObject) Format() string {
 	return o.format
 }
 
-// AuthenticatorData performs no validation of the provided data, immediately
-// returning the authenticator data. This is appropriate for relying parties
-// that aren't attempting to perform attestation, as well as [FormatNone]
-// attestation statements.
-//
-// https://www.w3.org/TR/webauthn-3/#sctn-none-attestation
-func (o *attestationObject) AuthenticatorData() (*AuthenticatorData, error) {
-	return parseAuthData(o.authData)
-}
-
 // PackedOptions allows configuration for validating packed attestation
 // statement.
 //
@@ -336,7 +316,7 @@ type Packed struct {
 // a packed signature.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
-func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOptions) (*Packed, error) {
+func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opts *PackedOptions) (*Packed, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("options must be provided")
 	}
@@ -348,7 +328,7 @@ func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 	if err != nil {
 		return nil, fmt.Errorf("invalid attestation statement: %v", err)
 	}
-	ad, err := parseAuthData(o.authData)
+	ad, err := parseAuthData(o.authData, rpid)
 	if err != nil {
 		return nil, fmt.Errorf("invalid auth data: %v", err)
 	}
@@ -669,18 +649,6 @@ type AuthenticationData struct {
 //
 // https://www.w3.org/TR/webauthn-3/#authenticator-data
 type AuthenticatorData struct {
-	// SHA-256 hash of the relying party ID. Whereas the "origin" is always the
-	// full base URL seen by the browser during registration, with scheme and
-	// optional port, the RP ID can be a domain or URL with some restrictions.
-	//
-	// The spec provides the following example:
-	//
-	// 	"...given a Relying Party whose origin is https://login.example.com:1337,
-	//	then the following RP IDs are valid: login.example.com (default) and
-	//	example.com, but not m.login.example.com and not com."
-	//
-	// https://www.w3.org/TR/webauthn-3/#rp-id
-	RPIDHash [32]byte
 	// Various bits of information about this key, such as if it is synced to a
 	// Cloud service.
 	//
@@ -732,8 +700,6 @@ type AuthenticatorData struct {
 //
 // https://www.w3.org/TR/webauthn-3/#attestation-object
 func parseAttestationObject(b []byte) (*attestationObject, error) {
-	// TODO: compare hash of ID to relying party.
-
 	d := cbor.NewDecoder(b)
 	var (
 		format   string
@@ -813,12 +779,19 @@ func parsePacked(b []byte) (*packed, error) {
 	return p, nil
 }
 
-func parseAuthData(b []byte) (*AuthenticatorData, error) {
+func parseAuthData(b []byte, rpid string) (*AuthenticatorData, error) {
 	var ad AuthenticatorData
 	if len(b) < 32 {
 		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}
-	copy(ad.RPIDHash[:], b[:32])
+
+	var rpidHash [32]byte
+	copy(rpidHash[:], b[:32])
+	wantRPID := sha256.Sum256([]byte(rpid))
+	if wantRPID != rpidHash {
+		return nil, fmt.Errorf("authenticator data doesn't match relying party ID")
+	}
+
 	b = b[32:]
 	if len(b) < 1 {
 		return nil, fmt.Errorf("not enough bytes for flag")
