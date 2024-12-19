@@ -8,6 +8,8 @@ import (
 	"fmt"
 )
 
+// AAGUID identifies an authenticator or specific authenticator model.
+//
 // https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#authenticator-attestation-guid-aaguid-typedef
 type AAGUID [16]byte
 
@@ -98,25 +100,43 @@ func (a *AAGUID) UnmarshalText(s []byte) error {
 	return nil
 }
 
+// Metadata is a parsed FIDO Metadata Service BLOB, and can be used to validate
+// the certificate chain of "packed" attestations.
+//
+// https://fidoalliance.org/metadata/
 type Metadata struct {
-	Entries []*MetadataEntry `json:"entries"`
+	entries []*metadataEntry `json:"entries"`
 }
 
 // https://fidoalliance.org/specs/mds/fido-metadata-service-v3.0-ps-20210518.html
-type MetadataEntry struct {
+type metadataEntry struct {
 	AAID     string            `json:"aaid"`
 	AAGUID   AAGUID            `json:"aaguid"`
 	KeyIDs   []string          `json:"attestationCertificateKeyIdentifiers"`
-	Metadata MetadataStatement `json:"metadataStatement"`
+	Metadata metadataStatement `json:"metadataStatement"`
 }
 
 // https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#metadata-keys
-type MetadataStatement struct {
+type metadataStatement struct {
 	AAGUID                      AAGUID   `json:"aaguid"`
 	Description                 string   `json:"description"`
 	AttestationRootCertificates []string `json:"attestationRootCertificates"`
 }
 
+// ParseMetadata parses the FIDO Metadata Service BLOB containing centrally
+// registered attestation certificates for authenticators. This can be used to
+// verify "packed" attestation statements, such as those from physical security
+// keys.
+//
+// The BLOB can be downloaded from: https://mds3.fidoalliance.org/
+//
+// ParseMetadata parses the raw JWT file provided by the service, but does not
+// perform signature validation.
+//
+// "We suggest downloading the BLOB once a month and then caching its content
+// because the MDS data does not change often."
+//
+// - https://fidoalliance.org/metadata/
 func ParseMetadata(b []byte) (*Metadata, error) {
 	parts := bytes.Split(b, []byte("."))
 	if len(parts) != 3 {
@@ -126,9 +146,11 @@ func ParseMetadata(b []byte) (*Metadata, error) {
 	if _, err := base64.RawURLEncoding.Decode(data, parts[1]); err != nil {
 		return nil, fmt.Errorf("decoding jwt payload: %v", err)
 	}
-	var md Metadata
+	var md struct {
+		Entries []*metadataEntry `json:"entries"`
+	}
 	if err := json.Unmarshal(data, &md); err != nil {
 		return nil, fmt.Errorf("decoding blob: %v", err)
 	}
-	return &md, nil
+	return &Metadata{entries: md.Entries}, nil
 }

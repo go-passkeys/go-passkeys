@@ -54,7 +54,9 @@ func (a Algorithm) String() string {
 	return fmt.Sprintf("Algorithm(0x%x)", int(a))
 }
 
+// Attestation formats recognized by this package.
 const (
+	// Indicates that the authenticator didn't provide attestation.
 	FormatNone   = "none"
 	FormatPacked = "packed"
 )
@@ -88,13 +90,48 @@ func AttestationFormat(attestationObject []byte) (string, error) {
 	return format, nil
 }
 
+// RelyingParty represents a server that attempts to validate webauthn
+// credentials to authenticate users.
 type RelyingParty struct {
+	// The relying party identifier is a string that uniquely identifies the server.
+	// This defaults to the "effective domain" of the origin. For example
+	// "login.example.com".
+	//
+	// https://www.w3.org/TR/webauthn-3/#relying-party-identifier
 	RPID string
 
+	// Origin is the base URL used by the browser when registering or challenging
+	// a credential. For example "https://login.example.com:8080"
 	Origin string
 }
 
-func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*AttestationData, error) {
+// VerifyAttestation validates a credential creation attempt. attestationObject
+// and clientDataJSON arguments coorespond directly to the credential response
+// fields returned during creation. Challenge is the value passed to the creation
+// call used to prevent replay attacks.
+//
+//	const cred = await navigator.credentials.create({
+//		publicKey: {
+//			challenge: challenge,
+//			// Other fields...
+//		},
+//	});
+//
+//	// Convert to base64 strings.
+//	const attestationObject = btoa(String.fromCharCode(...new Uint8Array(cred.response.attestationObject)));
+//	const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
+//
+//	// POST values to the server.
+//	const resp = await fetch("/registration-finish", {
+//		method: "POST",
+//		body: JSON.stringify({
+//			transports: cred.response.getTransports(),
+//			attestationObject: attestationObject,
+//			clientDataJSON: clientDataJSON,
+//	    }),
+//	});
+//
+func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*AuthenticatorData, error) {
 	var clientData clientData
 	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
 		return nil, fmt.Errorf("parsing client data: %v", err)
@@ -126,6 +163,78 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 	return data, nil
 }
 
+// VerifyAttestationPacked is similar to VerifyAttestation, but additionally
+// performs validation of "packed" attestation statements.
+//
+// Packed attestations are generally supported by physical authenticators, such
+// as security keys, as well as local storage.
+//
+// See [PackedOptions] for details on how to fetch certificate chains used for
+// validation.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attestationObject []byte, opts *PackedOptions) (*Packed, error) {
+	var clientData clientData
+	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
+		return nil, fmt.Errorf("parsing client data: %v", err)
+	}
+	if clientData.Type != "webauthn.create" {
+		return nil, fmt.Errorf("invalid client data type, expected 'webauthn.create', got '%s'", clientData.Type)
+	}
+	if clientData.Origin != rp.Origin {
+		return nil, fmt.Errorf("invalid client data origin, expected '%s', got '%s'", rp.Origin, clientData.Origin)
+	}
+	if !clientData.Challenge.Equal(challenge) {
+		return nil, fmt.Errorf("invalid client data challenge")
+	}
+
+	attObj, err := parseAttestationObject(attestationObject)
+	if err != nil {
+		return nil, fmt.Errorf("parsing attestation object: %v", err)
+	}
+
+	data, err := attObj.VerifyPacked(clientDataJSON, opts)
+	if err != nil {
+		return nil, fmt.Errorf("parsing authenticator data: %v", err)
+	}
+
+	rpIDHash := sha256.Sum256([]byte(rp.RPID))
+	if data.AttestationData.RPIDHash != rpIDHash {
+		return nil, fmt.Errorf("attestation was generated for a different relying party ID")
+	}
+	return data, nil
+}
+
+// VerifyAuthentication validates an authentication assertion. The public key
+// and algorithm should use the [AuthenticatorData] values for the credential.
+// The challenge is the value passed to the frontend to sign. authenticatorData,
+// clientDataJSON, and signature should be the values returned by the credential
+// asserstion.
+//
+//	const cred = await navigator.credentials.get({
+//		publicKey: {
+//			// Challenge for the credential to sign.
+//			challenge: challenge,
+//			// Other fields...
+//		},
+//	});
+//
+//	// Convert to base64 strings.
+//	const authenticatorData = btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData)));
+//	const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
+//	const signature = btoa(String.fromCharCode(...new Uint8Array(cred.response.signature)));
+//	const userHandle = btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle)));
+//
+//	// POST data back to server.
+//	const resp = await fetch("/login-finish", {
+//	    method: "POST",
+//	    body: JSON.stringify({
+//			authenticatorData: authenticatorData,
+//			clientDataJSON: clientDataJSON,
+//			signature: signature,
+//			userHandle: userHandle,
+//	    }),
+//	});
 func (rp *RelyingParty) VerifyAuthentication(pub crypto.PublicKey, alg Algorithm, challenge, clientDataJSON, authData, sig []byte) (*AuthenticationData, error) {
 	clientDataHash := sha256.Sum256(clientDataJSON)
 
@@ -184,7 +293,7 @@ func (o *attestationObject) Format() string {
 // attestation statements.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-none-attestation
-func (o *attestationObject) AuthenticatorData() (*AttestationData, error) {
+func (o *attestationObject) AuthenticatorData() (*AuthenticatorData, error) {
 	return parseAuthData(o.authData)
 }
 
@@ -198,6 +307,8 @@ type PackedOptions struct {
 	//
 	// https://fidoalliance.org/metadata/
 	Metadata *Metadata
+
+	AllowSelfAttested bool
 }
 
 // Packed holds a parsed packed attestation format.
@@ -205,7 +316,7 @@ type PackedOptions struct {
 // https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
 type Packed struct {
 	// Parsed and validated authenticator data.
-	AuthenticatorData *AttestationData
+	AttestationData *AuthenticatorData
 
 	// If true, the data was self attested and signed with the key returned in
 	// authenticator data, rather than an attestation certificate.
@@ -248,6 +359,10 @@ func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 	data = append(data, clientDataHash[:]...)
 
 	if len(p.x5c) == 0 {
+		if !opts.AllowSelfAttested {
+			return nil, fmt.Errorf("attestation statement is self attested, which is not permitted by packed validation config")
+		}
+
 		// "If self attestation is in use, the authenticator produces sig by
 		// concatenating authenticatorData and clientDataHash, and signing the
 		// result using the credential private key. It sets alg to the
@@ -258,8 +373,8 @@ func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 			return nil, fmt.Errorf("verifying self-attested data: %v", err)
 		}
 		return &Packed{
-			AuthenticatorData: ad,
-			SelfAttested:      true,
+			AttestationData: ad,
+			SelfAttested:    true,
 		}, nil
 	}
 
@@ -311,23 +426,29 @@ func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 	if len(aaguidExt) == 0 {
 		return nil, fmt.Errorf("no id-fido-gen-ce-aaguid extension in attestation certifiate")
 	}
-	var aaguid []byte
-	if _, err := asn1.Unmarshal(aaguidExt, &aaguid); err != nil {
+	var aaguidRaw []byte
+	if _, err := asn1.Unmarshal(aaguidExt, &aaguidRaw); err != nil {
 		return nil, fmt.Errorf("failed to parse id-fido-gen-ce-aaguid extension in attestation certifiate: %v", err)
 	}
-	if len(aaguid) != 16 {
-		return nil, fmt.Errorf("expected id-fido-gen-ce-aaguid extension to be a 16 byte value, got %d", len(aaguid))
+	if len(aaguidRaw) != 16 {
+		return nil, fmt.Errorf("expected id-fido-gen-ce-aaguid extension to be a 16 byte value, got %d", len(aaguidRaw))
+	}
+	var aaguid AAGUID
+	copy(aaguid[:], aaguidRaw[:])
+
+	if aaguid != ad.AAGUID {
+		return nil, fmt.Errorf("authenticator data aaguid (%s) doesn't match packed certificate aaguid (%s)", ad.AAGUID, aaguid)
 	}
 
-	var ent *MetadataEntry
-	for _, entry := range opts.Metadata.Entries {
-		if bytes.Equal(entry.AAGUID[:], aaguid) {
+	var ent *metadataEntry
+	for _, entry := range opts.Metadata.entries {
+		if entry.AAGUID == aaguid {
 			ent = entry
 			break
 		}
 	}
 	if ent == nil {
-		return nil, fmt.Errorf("no entry in metadata found with aaguid %x", aaguid)
+		return nil, fmt.Errorf("no entry in metadata found with aaguid %s", aaguid)
 	}
 
 	v := x509.VerifyOptions{
@@ -354,7 +475,7 @@ func (o *attestationObject) VerifyPacked(clientDataJSON []byte, opts *PackedOpti
 		return nil, fmt.Errorf("failed to verify attestation certificate for provider %s (%x): %v", ent.Metadata.Description, aaguid, err)
 	}
 	return &Packed{
-		AuthenticatorData:      ad,
+		AttestationData:        ad,
 		AttestationCertificate: attCert,
 	}, nil
 }
@@ -435,10 +556,13 @@ func verifySignature(pub crypto.PublicKey, alg Algorithm, data, sig []byte) erro
 	return nil
 }
 
+// Flags represents authenticator data flags, providing information such as the
+// sync state of a credential.
+//
 // https://www.w3.org/TR/webauthn-3/#authdata-flags
 type Flags byte
 
-// String returns a binary representation of the flags.
+// String returns a human readable representation of the flags.
 func (f Flags) String() string {
 	var vals []string
 	if f.UserPresent() {
@@ -471,36 +595,57 @@ func (f Flags) String() string {
 	return fmt.Sprintf("Flags(%s)", strings.Join(vals, "|"))
 }
 
+// UserPresent identifies if the authenticator performed a successfull user
+// presence test.
+//
 // https://www.w3.org/TR/webauthn-3/#concept-user-present
 func (f Flags) UserPresent() bool {
 	return (byte(f) & 1) != 0
 }
 
+// UserVerified identifies if an authenticator performed additional authorization
+// of a creation or authentication event, such as a password entry or biometric
+// challenge.
+//
 // https://www.w3.org/TR/webauthn-3/#concept-user-verified
 func (f Flags) UserVerified() bool {
 	return (byte(f) & (1 << 2)) != 0
 }
 
+// BackupEligible identifies if a credential can be backed up to external storage
+// (such as a passkey), or if the credential is single-device.
+//
 // https://www.w3.org/TR/webauthn-3/#backup-eligible
 func (f Flags) BackupEligible() bool {
 	return (byte(f) & (1 << 3)) != 0
 }
 
+// BackedUp identifies if a credential has been synced to external storage.
+//
 // https://www.w3.org/TR/webauthn-3/#backed-up
 func (f Flags) BackedUp() bool {
 	return (byte(f) & (1 << 4)) != 0
 }
 
+// AttestedCredentialData identifies if a credential contains an attestatino
+// statement.
+//
 // https://www.w3.org/TR/webauthn-3/#attested-credential-data
 func (f Flags) AttestedCredentialData() bool {
 	return (byte(f) & (1 << 6)) != 0
 }
 
+// Extensions identifies if the authenticator data contains additional extensions.
+//
 // https://www.w3.org/TR/webauthn-3/#authdata-extensions
 func (f Flags) Extensions() bool {
 	return (byte(f) & (1 << 7)) != 0
 }
 
+// AuthenticationData holds subsets of the information provided by the
+// authenticator and used during signing.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-authenticator-data
 type AuthenticationData struct {
 	// Various bits of information about this key, such as if it is synced to a
 	// Cloud service.
@@ -511,18 +656,19 @@ type AuthenticationData struct {
 	// challenge. This may be zero for authenticators that don't support signing
 	// counters.
 	//
-	// Signature counters are intended to be used to detect cloned credentials.
+	// Signature counters are intended to be used to detect cloned credentials,
+	// but are generally unsupported by synced keys.
 	//
 	// https://www.w3.org/TR/webauthn-3/#sctn-sign-counter
 	Counter uint32
 }
 
-// AttestationData holds information about an individual credential. This
+// AuthenticatorData holds information about an individual credential. This
 // data can be verified through attestation statements during registration, but
 // is generally assumed to have been correctly provided by the browser.
 //
 // https://www.w3.org/TR/webauthn-3/#authenticator-data
-type AttestationData struct {
+type AuthenticatorData struct {
 	// SHA-256 hash of the relying party ID. Whereas the "origin" is always the
 	// full base URL seen by the browser during registration, with scheme and
 	// optional port, the RP ID can be a domain or URL with some restrictions.
@@ -667,8 +813,8 @@ func parsePacked(b []byte) (*packed, error) {
 	return p, nil
 }
 
-func parseAuthData(b []byte) (*AttestationData, error) {
-	var ad AttestationData
+func parseAuthData(b []byte) (*AuthenticatorData, error) {
+	var ad AuthenticatorData
 	if len(b) < 32 {
 		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}
