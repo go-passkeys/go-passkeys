@@ -244,7 +244,7 @@ func TestVerifyAuthentication(t *testing.T) {
 
 			clientDataJSON := []byte(tc.clientDataJSON)
 
-			got, err := tc.rp.VerifyAuthentication(pub, tc.alg, challenge, clientDataJSON, authData, sig)
+			got, err := tc.rp.VerifyAssertion(pub, tc.alg, challenge, clientDataJSON, authData, sig)
 			if err != nil {
 				t.Fatalf("Verifying authentication: %v", err)
 			}

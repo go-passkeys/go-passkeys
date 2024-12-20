@@ -22,10 +22,15 @@ import (
 
 var idFIDOGenCEAAGUIDOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 4}
 
+// Algorithm by the key to sign values, both a public key scheme and associated
+// hashing function.
+//
 // https://www.w3.org/TR/webauthn-3/#typedefdef-cosealgorithmidentifier
-// https://www.iana.org/assignments/cose/cose.xhtml#algorithms
 type Algorithm int
 
+// The set of algorithms recognized and supported by this package.
+//
+// https://www.iana.org/assignments/cose/cose.xhtml#algorithms
 const (
 	ES256 Algorithm = -7
 	ES384 Algorithm = -35
@@ -109,29 +114,7 @@ type RelyingParty struct {
 // and clientDataJSON arguments coorespond directly to the credential response
 // fields returned during creation. Challenge is the value passed to the creation
 // call used to prevent replay attacks.
-//
-//	const cred = await navigator.credentials.create({
-//		publicKey: {
-//			challenge: challenge,
-//			// Other fields...
-//		},
-//	});
-//
-//	// Convert to base64 strings.
-//	const attestationObject = btoa(String.fromCharCode(...new Uint8Array(cred.response.attestationObject)));
-//	const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
-//
-//	// POST values to the server.
-//	const resp = await fetch("/registration-finish", {
-//		method: "POST",
-//		body: JSON.stringify({
-//			transports: cred.response.getTransports(),
-//			attestationObject: attestationObject,
-//			clientDataJSON: clientDataJSON,
-//	    }),
-//	});
-//
-func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*AuthenticatorData, error) {
+func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*Attestation, error) {
 	var clientData clientData
 	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
 		return nil, fmt.Errorf("parsing client data: %v", err)
@@ -195,37 +178,12 @@ func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attes
 	return data, nil
 }
 
-// VerifyAuthentication validates an authentication assertion. The public key
-// and algorithm should use the [AuthenticatorData] values for the credential.
+// VerifyAssertion validates an authentication assertion. The public key
+// and algorithm should use the [Attestation] values for the credential.
 // The challenge is the value passed to the frontend to sign. authenticatorData,
 // clientDataJSON, and signature should be the values returned by the credential
 // asserstion.
-//
-//	const cred = await navigator.credentials.get({
-//		publicKey: {
-//			// Challenge for the credential to sign.
-//			challenge: challenge,
-//			// Other fields...
-//		},
-//	});
-//
-//	// Convert to base64 strings.
-//	const authenticatorData = btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData)));
-//	const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON)));
-//	const signature = btoa(String.fromCharCode(...new Uint8Array(cred.response.signature)));
-//	const userHandle = btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle)));
-//
-//	// POST data back to server.
-//	const resp = await fetch("/login-finish", {
-//	    method: "POST",
-//	    body: JSON.stringify({
-//			authenticatorData: authenticatorData,
-//			clientDataJSON: clientDataJSON,
-//			signature: signature,
-//			userHandle: userHandle,
-//	    }),
-//	});
-func (rp *RelyingParty) VerifyAuthentication(pub crypto.PublicKey, alg Algorithm, challenge, clientDataJSON, authData, sig []byte) (*AuthenticationData, error) {
+func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, challenge, clientDataJSON, authData, sig []byte) (*Assertion, error) {
 	clientDataHash := sha256.Sum256(clientDataJSON)
 
 	var clientData clientData
@@ -264,7 +222,7 @@ func (rp *RelyingParty) VerifyAuthentication(pub crypto.PublicKey, alg Algorithm
 	}
 
 	counter := binary.BigEndian.Uint32(authData[32+1 : 32+1+4])
-	return &AuthenticationData{
+	return &Assertion{
 		Flags:   flags,
 		Counter: counter,
 	}, nil
@@ -296,7 +254,7 @@ type PackedOptions struct {
 // https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
 type Packed struct {
 	// Parsed and validated authenticator data.
-	AttestationData *AuthenticatorData
+	AttestationData *Attestation
 
 	// If true, the data was self attested and signed with the key returned in
 	// authenticator data, rather than an attestation certificate.
@@ -622,11 +580,11 @@ func (f Flags) Extensions() bool {
 	return (byte(f) & (1 << 7)) != 0
 }
 
-// AuthenticationData holds subsets of the information provided by the
+// Assertion holds subsets of the information provided by the
 // authenticator and used during signing.
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-authenticator-data
-type AuthenticationData struct {
+type Assertion struct {
 	// Various bits of information about this key, such as if it is synced to a
 	// Cloud service.
 	//
@@ -637,18 +595,19 @@ type AuthenticationData struct {
 	// counters.
 	//
 	// Signature counters are intended to be used to detect cloned credentials,
-	// but are generally unsupported by synced keys.
+	// but are generally unsupported by keys synced across multipled devices.
 	//
 	// https://www.w3.org/TR/webauthn-3/#sctn-sign-counter
 	Counter uint32
 }
 
-// AuthenticatorData holds information about an individual credential. This
-// data can be verified through attestation statements during registration, but
-// is generally assumed to have been correctly provided by the browser.
+// Attestation holds information about an individual credential. This data is
+// provided by the browser within the context of the origin registering the
+// key. In some circumstances, can be attested to be resident on a physical
+// security key or device.
 //
 // https://www.w3.org/TR/webauthn-3/#authenticator-data
-type AuthenticatorData struct {
+type Attestation struct {
 	// Various bits of information about this key, such as if it is synced to a
 	// Cloud service.
 	//
@@ -658,28 +617,35 @@ type AuthenticatorData struct {
 	// challenge. This may be zero for authenticators that don't support signing
 	// counters.
 	//
-	// Signature counters are intended to be used to detect cloned credentials.
+	// Signature counters are intended to be used to detect cloned credentials,
+	// but are generally unsupported by keys synced across multipled devices.
 	//
 	// https://www.w3.org/TR/webauthn-3/#sctn-sign-counter
 	Counter uint32
-	// The identifier for authenticator or credential service used to validate the
-	// key.
+
+	// The identifier for authenticator or service that stores the credential.
 	//
-	// [AAGUIDName] can be used to translate this to a human readable string, such
+	// [AAGUID.Name] can be used to translate this to a human readable string, such
 	// as "iCloud Keychain" or "Google Password Manager".
 	AAGUID AAGUID
-	// Raw ID of the credential. This value can be used as hints to the browser
-	// when authenticating a user, or during registration to avoid re-registering
-	// the same key twice.
+
+	// Raw ID of the credential, generated by the authenticator.
+	//
+	// This value is used during authentication to identify which keys are being
+	// challenged, and during registration to avoid re-registering the same key
+	// twice.
 	//
 	// https://www.w3.org/TR/webauthn-3/#credential-id
+	// https://www.w3.org/TR/webauthn-3/#dom-publickeycredentialcreationoptions-excludecredentials
+	// https://www.w3.org/TR/webauthn-3/#dom-publickeycredentialrequestoptions-allowcredentials
 	CredentialID []byte
+
 	// Algorithm used by the key to sign challenges.
 	Algorithm Algorithm
 	// Public key parse from the attestation statement.
 	//
 	// Callers can use [x509.MarshalPKIXPublicKey] and [x509.ParsePKIXPublicKey] to
-	// serialize these keys.
+	// serialize this value.
 	PublicKey crypto.PublicKey
 
 	// Raw extension data.
@@ -779,8 +745,8 @@ func parsePacked(b []byte) (*packed, error) {
 	return p, nil
 }
 
-func parseAuthData(b []byte, rpid string) (*AuthenticatorData, error) {
-	var ad AuthenticatorData
+func parseAuthData(b []byte, rpid string) (*Attestation, error) {
+	var ad Attestation
 	if len(b) < 32 {
 		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}
