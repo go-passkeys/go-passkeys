@@ -38,12 +38,12 @@ h1 {
 }
 
 #reauth-dialog {
-  padding: 1em;
   background-color: #f9f9f9;
   border-radius: 0.3em;
-  margin-top: 0.5em;
+  display: none;
   margin-bottom: 0.5em;
-  visibility: hidden;
+  margin-top: 0.5em;
+  padding: 1em;
 }
 
 #register_username {

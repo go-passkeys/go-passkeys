@@ -52,7 +52,7 @@ window.appHideError = appHideError;
 
 function appHideReauth() {
   const ele = document.getElementById("reauth-dialog");
-  ele.style.visibility = "hidden";
+  ele.style.display = "none";
 }
 window.appHideReauth = appHideReauth;
 
@@ -194,8 +194,8 @@ window.appLogin = async function() {
 
 window.appReauth = async function() {
 	appHideError();
+	appHideReauth();
     try {
-		document.getElementById("reauth-dialog").style.visibility = "hidden";
         const resp = await fetch("/reauth-start", {
             method: "POST",
             body: JSON.stringify({}),
@@ -259,7 +259,7 @@ window.appReauth = async function() {
 		document.getElementById("reauth-auth-data").textContent = authenticatorData;
 		document.getElementById("reauth-signature").textContent = signature;
 		document.getElementById("reauth-user-handle").textContent = userHandle;
-		document.getElementById("reauth-dialog").style.visibility = "visible";
+		document.getElementById("reauth-dialog").style.display = "block";
     } catch (error) {
         err(error);
     }
