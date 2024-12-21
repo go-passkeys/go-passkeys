@@ -345,7 +345,7 @@ func (s *server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.rp.VerifyAuthentication(p.publicKey, p.algorithm, l.challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature); err != nil {
+	if _, err := s.rp.VerifyAssertion(p.publicKey, p.algorithm, l.challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature); err != nil {
 		http.Error(w, "Verifying passkey: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -591,7 +591,7 @@ func (s *server) handleReauthFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.rp.VerifyAuthentication(p.publicKey, p.algorithm, re.challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature); err != nil {
+	if _, err := s.rp.VerifyAssertion(p.publicKey, p.algorithm, re.challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature); err != nil {
 		http.Error(w, "Verifying passkey: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
