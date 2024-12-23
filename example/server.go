@@ -60,7 +60,7 @@ func main() {
 		storage:  st,
 		staticFS: staticFS,
 		rp: &webauthn.RelyingParty{
-			RPID:   host,
+			ID:     host,
 			Origin: "http://" + addr,
 		},
 	}

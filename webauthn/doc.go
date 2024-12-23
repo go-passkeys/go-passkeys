@@ -54,7 +54,7 @@
 //		// "challenge" value should be fetched separately, not provided by the
 //		// client.
 //		rp := &webauthn.RelyingParty{
-//			RPID:   "login.example.com",
+//			ID:     "login.example.com",
 //			Origin: "https://login.example.com",
 //		}
 //		a, err := rp.VerifyAttestation(challenge, req.ClientDataJSON, req.AuthenticatorData)
@@ -138,7 +138,7 @@
 //		// Public key, algorithm, and challenge are looked up separately.
 //
 //		rp := &webauthn.RelyingParty{
-//			RPID:   "login.example.com",
+//			ID:     "login.example.com",
 //			Origin: "https://login.example.com",
 //		}
 //		a, err := rp.VerifyAssertion(pub, alg, challenge, req.ClientDataJSON, req.AuthenticatorData, req.Signature)

@@ -103,7 +103,7 @@ type RelyingParty struct {
 	// "login.example.com".
 	//
 	// https://www.w3.org/TR/webauthn-3/#relying-party-identifier
-	RPID string
+	ID string
 
 	// Origin is the base URL used by the browser when registering or challenging
 	// a credential. For example "https://login.example.com:8080"
@@ -134,7 +134,7 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
 
-	data, err := parseAuthData(attObj.authData, rp.RPID)
+	data, err := parseAuthData(attObj.authData, rp.ID)
 	if err != nil {
 		return nil, fmt.Errorf("parsing authenticator data: %v", err)
 	}
@@ -171,7 +171,7 @@ func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attes
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
 
-	data, err := attObj.VerifyPacked(rp.RPID, clientDataJSON, opts)
+	data, err := attObj.VerifyPacked(rp.ID, clientDataJSON, opts)
 	if err != nil {
 		return nil, fmt.Errorf("parsing authenticator data: %v", err)
 	}
@@ -206,7 +206,7 @@ func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, cha
 		return nil, fmt.Errorf("invalid signature: %v", err)
 	}
 
-	rpIDHash := sha256.Sum256([]byte(rp.RPID))
+	rpIDHash := sha256.Sum256([]byte(rp.ID))
 	if len(authData) < 32 {
 		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}

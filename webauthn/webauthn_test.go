@@ -19,7 +19,7 @@ func TestVerifyAttestation(t *testing.T) {
 		{
 			name: "YubiKey 5 Series",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			challenge:         "-ium4NdjLD6Acqy9p66NtA",
@@ -30,7 +30,7 @@ func TestVerifyAttestation(t *testing.T) {
 		{
 			name: "iCloud Keychain",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			challenge:         "Z_napzbTBbiJZpDJy2_x2g",
@@ -41,7 +41,7 @@ func TestVerifyAttestation(t *testing.T) {
 		{
 			name: "Google Password Manager",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			challenge:         "ZnTNLi5zseMQowTP5bnrhQ",
@@ -52,7 +52,7 @@ func TestVerifyAttestation(t *testing.T) {
 		{
 			name: "Chrome local",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			challenge:         "8XJI5cQqW-VqtSPO7JIpUg",
@@ -97,7 +97,7 @@ func TestVerifyAttestationPacked(t *testing.T) {
 		{
 			name: "YubiKey 5 Series",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			challenge:         "-ium4NdjLD6Acqy9p66NtA",
@@ -107,7 +107,7 @@ func TestVerifyAttestationPacked(t *testing.T) {
 		{
 			name: "Chrome local",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			challenge:         "8XJI5cQqW-VqtSPO7JIpUg",
@@ -175,7 +175,7 @@ func TestVerifyAuthentication(t *testing.T) {
 		{
 			name: "iCloud Keychain",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			publicKey:      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAENyvB2asAdRnjlORh0i+qRWaGrywFAGDEpI+2AesrBGyh5KR6VMc7XjfELnqpqGVAVuuow+hi7yDH9XR3a97KYQ==",
@@ -190,7 +190,7 @@ func TestVerifyAuthentication(t *testing.T) {
 		{
 			name: "Google Password Manager",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			publicKey:      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhc/4hoXkAaBsUc5vrE56q/v9S5xa8rA3q5rVZFI2rIAy2H59mtPD+fMeCHUJQ3DOJwxkjESVjEGovXqCMcOtLA==",
@@ -204,7 +204,7 @@ func TestVerifyAuthentication(t *testing.T) {
 		{
 			name: "YubiKey 5 Series",
 			rp: &RelyingParty{
-				RPID:   "localhost",
+				ID:     "localhost",
 				Origin: "http://localhost:8080",
 			},
 			publicKey:      "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwuIDbblRRWb8lOANmAK3w9dppoKQXC2rw7yY6c9W/C5p5XU3NpH55RWYheccEtji/4Yc+zscmwMQN+KrQ/o7/g==",

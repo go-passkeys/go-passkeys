@@ -28,7 +28,7 @@ func newTestServer(t *testing.T) (*http.Client, *httptest.Server, *server) {
 		staticFS: staticFSEmbed,
 		storage:  newTestStorage(t),
 		rp: &webauthn.RelyingParty{
-			RPID:   "localhost",
+			ID:     "localhost",
 			Origin: "http://localhost:8080",
 		},
 	}
