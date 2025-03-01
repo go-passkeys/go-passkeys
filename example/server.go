@@ -64,6 +64,7 @@ func main() {
 			Origin: "http://" + addr,
 		},
 	}
+	log.Printf("Using database: %s", dbPath)
 	log.Printf("Listening on %s", addr)
 	log.Fatal(http.ListenAndServe(":8080", s))
 }
