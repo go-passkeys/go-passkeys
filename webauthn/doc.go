@@ -1,5 +1,9 @@
 // The webauthn package implements relying party logic for WebAuthn.
 //
+// This API is currently experimental and subject to change prior to a major
+// version tag. It is currently intended as a discussion driver for Go's own
+// crypto/webauthn package (https://github.com/golang/go/issues/71095).
+//
 // # Attestation
 //
 // Attestation allows the creation of new keys through the browser. To register
