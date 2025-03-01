@@ -32,14 +32,14 @@ the user will register credentials with.
 
 ```go
 import (
-    // ...
+	// ...
 
-    "github.com/go-passkeys/go-passkeys/webauthn"
+	"github.com/go-passkeys/go-passkeys/webauthn"
 )
 
 var relyingParty = &webauthn.RelyingParty{
-    ID:     "localhost",
-    Origin: "http://localhost:8080",
+	ID:     "localhost",
+	Origin: "http://localhost:8080",
 }
 ```
 
@@ -61,9 +61,9 @@ const cred = await navigator.credentials.create({
 
 // Convert to base64 strings.
 const attestationObject = btoa(String.fromCharCode(
-    ...new Uint8Array(cred.response.attestationObject)));
+	...new Uint8Array(cred.response.attestationObject)));
 const clientDataJSON = btoa(String.fromCharCode(
-    ...new Uint8Array(cred.response.clientDataJSON)));
+	...new Uint8Array(cred.response.clientDataJSON)));
 
 // POST values to the server.
 const resp = await fetch("/registration-finish", {
@@ -72,7 +72,7 @@ const resp = await fetch("/registration-finish", {
 		attestationObject: attestationObject,
 		clientDataJSON: clientDataJSON,
 		transports: cred.response.getTransports(), // Used later for hints.
-    }),
+	}),
 });
 ```
 
@@ -95,7 +95,7 @@ func handleRegistration(w http.ResponseWriter, r *http.Request) {
 	// "challenge" value should be fetched separately, not provided by the
 	// client.
 	att, err := relyingParty.VerifyAttestation(
-        challenge, req.ClientDataJSON, req.AuthenticatorData)
+		challenge, req.ClientDataJSON, req.AuthenticatorData)
 	if err != nil {
 		// ...
 	}
@@ -113,7 +113,7 @@ func handleRegistration(w http.ResponseWriter, r *http.Request) {
 	transports := req.Transports
 
 	// Determine authenticator name to display to user. For example: "iCloud
-    // Keychain".
+	// Keychain".
 	name, ok := att.AAGUID.Name()
 	if !ok {
 		// ...
@@ -143,23 +143,23 @@ const cred = await navigator.credentials.get({
 
 // Convert result values to base64 to send over the wire.
 const authenticatorData = btoa(String.fromCharCode(
-    ...new Uint8Array(cred.response.authenticatorData)));
+	...new Uint8Array(cred.response.authenticatorData)));
 const clientDataJSON = btoa(String.fromCharCode(
-    ...new Uint8Array(cred.response.clientDataJSON)));
+	...new Uint8Array(cred.response.clientDataJSON)));
 const signature = btoa(String.fromCharCode(
-    ...new Uint8Array(cred.response.signature)));
+	...new Uint8Array(cred.response.signature)));
 const userHandle = btoa(String.fromCharCode(
-    ...new Uint8Array(cred.response.userHandle)));
+	...new Uint8Array(cred.response.userHandle)));
 
 // POST data back to server.
 const resp = await fetch("/login-finish", {
-    method: "POST",
-    body: JSON.stringify({
+	method: "POST",
+	body: JSON.stringify({
 		authenticatorData: authenticatorData,
 		clientDataJSON: clientDataJSON,
 		signature: signature,
 		userHandle: userHandle,
-    }),
+	}),
 });
 ```
 
@@ -180,11 +180,11 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Public key, algorithm, and challenge are looked up separately...
 
 	a, err := relyingParty.VerifyAssertion(
-        pub, alg, challenge,
-        req.ClientDataJSON, req.AuthenticatorData, req.Signature)
-    if err != nil {
-        // ...
-    }
+		pub, alg, challenge,
+		req.ClientDataJSON, req.AuthenticatorData, req.Signature)
+	if err != nil {
+		// ...
+	}
 
 	// ...
 }
