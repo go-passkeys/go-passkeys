@@ -83,7 +83,7 @@ func run() error {
 		return fmt.Errorf("formatting go file: %v", err)
 	}
 
-	if err := os.WriteFile("aaguid.go", srcBytes, 0644); err != nil {
+	if err := os.WriteFile("aaguid_names.go", srcBytes, 0644); err != nil {
 		return fmt.Errorf("writing aaguid file: %v", err)
 	}
 	return nil

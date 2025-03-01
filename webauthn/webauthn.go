@@ -240,13 +240,16 @@ func (o *attestationObject) Format() string {
 //
 // https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
 type PackedOptions struct {
-	// Metadata allows use the FIDO Alliance Metadata Service for
-	// verifying packed attestations using registered root certificates.
+	// When set, allow packed verifications that are self-attested.
+	//
+	// https://www.w3.org/TR/webauthn-3/#self-attestation
+	AllowSelfAttested bool
+
+	// GetRoots returns the root certificates for a given AAGUID. For example, by
+	// parsing the FIDO Alliance Metadata Service.
 	//
 	// https://fidoalliance.org/metadata/
-	Metadata *Metadata
-
-	AllowSelfAttested bool
+	GetRoots func(aaguid AAGUID) (*x509.CertPool, error)
 }
 
 // Packed holds a parsed packed attestation format.
@@ -278,8 +281,8 @@ func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opt
 	if opts == nil {
 		return nil, fmt.Errorf("options must be provided")
 	}
-	if opts.Metadata == nil {
-		return nil, fmt.Errorf("metadata blob must be provided in options")
+	if !opts.AllowSelfAttested && opts.GetRoots == nil {
+		return nil, fmt.Errorf("self attested not allowed and no root certificates provided")
 	}
 
 	p, err := parsePacked(o.attestationStatement)
@@ -378,30 +381,13 @@ func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opt
 		return nil, fmt.Errorf("authenticator data aaguid (%s) doesn't match packed certificate aaguid (%s)", ad.AAGUID, aaguid)
 	}
 
-	var ent *metadataEntry
-	for _, entry := range opts.Metadata.entries {
-		if entry.AAGUID == aaguid {
-			ent = entry
-			break
-		}
-	}
-	if ent == nil {
-		return nil, fmt.Errorf("no entry in metadata found with aaguid %s", aaguid)
+	roots, err := opts.GetRoots(aaguid)
+	if err != nil {
+		return nil, err
 	}
 
 	v := x509.VerifyOptions{
-		Roots: x509.NewCertPool(),
-	}
-	for _, certRaw := range ent.Metadata.AttestationRootCertificates {
-		certBytes, err := base64.StdEncoding.DecodeString(certRaw)
-		if err != nil {
-			return nil, fmt.Errorf("decoding certificate for provider %s (%x): %v", ent.Metadata.Description, aaguid, err)
-		}
-		cert, err := x509.ParseCertificate(certBytes)
-		if err != nil {
-			return nil, fmt.Errorf("parsing certificate for provider %s (%x): %v", ent.Metadata.Description, aaguid, err)
-		}
-		v.Roots.AddCert(cert)
+		Roots: roots,
 	}
 	if len(x5c) > 1 {
 		v.Intermediates = x509.NewCertPool()
@@ -410,7 +396,7 @@ func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opt
 		}
 	}
 	if _, err := attCert.Verify(v); err != nil {
-		return nil, fmt.Errorf("failed to verify attestation certificate for provider %s (%x): %v", ent.Metadata.Description, aaguid, err)
+		return nil, fmt.Errorf("failed to verify attestation certificate for provider %s: %v", aaguid, err)
 	}
 	return &Packed{
 		AttestationData:        ad,

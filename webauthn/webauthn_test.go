@@ -3,7 +3,10 @@ package webauthn
 import (
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -120,12 +123,21 @@ func TestVerifyAttestationPacked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loading metadata blob: %v", err)
 	}
-	md, err := ParseMetadata(blobData)
+	parts := strings.Split(string(blobData), ".")
+	if len(parts) != 3 {
+		t.Fatalf("Failed to parse blob JWT, expected 3 parts got %d", len(parts))
+	}
+	mdRaw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
+		t.Fatalf("Failed to decode JWT: %v", err)
+	}
+
+	md := &metadata{}
+	if err := json.Unmarshal(mdRaw, md); err != nil {
 		t.Fatalf("parsing metadata blob: %v", err)
 	}
 	opts := &PackedOptions{
-		Metadata:          md,
+		GetRoots:          md.getRoots,
 		AllowSelfAttested: true,
 	}
 
@@ -257,4 +269,50 @@ func TestVerifyAuthentication(t *testing.T) {
 			}
 		})
 	}
+}
+
+// metadata is a parsed FIDO metadata Service BLOB, and can be used to validate
+// the certificate chain of "packed" attestations.
+//
+// https://fidoalliance.org/metadata/
+type metadata struct {
+	Entries []*metadataEntry `json:"entries"`
+}
+
+func (m *metadata) getRoots(aaguid AAGUID) (*x509.CertPool, error) {
+	for _, ent := range m.Entries {
+		if ent.Metadata.AAGUID != aaguid {
+			continue
+		}
+
+		pool := x509.NewCertPool()
+		for _, cert := range ent.Metadata.AttestationRootCertificates {
+			data, err := base64.StdEncoding.DecodeString(cert)
+			if err != nil {
+				return nil, fmt.Errorf("decoding certificate base64 for aaguid %s: %v", aaguid, err)
+			}
+			cert, err := x509.ParseCertificate(data)
+			if err != nil {
+				return nil, fmt.Errorf("parsing certificate for aaguid %s: %v", aaguid, err)
+			}
+			pool.AddCert(cert)
+		}
+		return pool, nil
+	}
+	return nil, fmt.Errorf("no certificates found for aaguid: %s", aaguid)
+}
+
+// https://fidoalliance.org/specs/mds/fido-metadata-service-v3.0-ps-20210518.html
+type metadataEntry struct {
+	AAID     string            `json:"aaid"`
+	AAGUID   AAGUID            `json:"aaguid"`
+	KeyIDs   []string          `json:"attestationCertificateKeyIdentifiers"`
+	Metadata metadataStatement `json:"metadataStatement"`
+}
+
+// https://fidoalliance.org/specs/mds/fido-metadata-statement-v3.0-ps-20210518.html#metadata-keys
+type metadataStatement struct {
+	AAGUID                      AAGUID   `json:"aaguid"`
+	Description                 string   `json:"description"`
+	AttestationRootCertificates []string `json:"attestationRootCertificates"`
 }
