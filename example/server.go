@@ -219,7 +219,6 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			Algorithm         string
 			Public            string
 			AttestationObject string
-			AttestationFormat string
 			ClientData        string
 			CreatedAt         int64
 			BackedUp          bool
@@ -232,11 +231,6 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Encoding key: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-			format, err := webauthn.AttestationFormat(pk.attestationObject)
-			if err != nil {
-				http.Error(w, "Parsing attestation format: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
 
 			p := userPasskeys{
 				ID:                base64.StdEncoding.EncodeToString(pk.passkeyID),
@@ -245,7 +239,6 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				Public:            base64.StdEncoding.EncodeToString(pub),
 				CreatedAt:         pk.createdAt.UnixMilli(),
 				ClientData:        string(pk.clientDataJSON),
-				AttestationFormat: format,
 				AttestationObject: base64.StdEncoding.EncodeToString(pk.attestationObject),
 				Transports:        pk.transports,
 			}
