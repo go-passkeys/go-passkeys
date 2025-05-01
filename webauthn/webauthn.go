@@ -9,6 +9,8 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/subtle"
+	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -17,6 +19,8 @@ import (
 
 	"github.com/go-passkeys/go-passkeys/webauthn/internal/cbor"
 )
+
+var idFIDOGenCEAAGUIDOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 4}
 
 // Algorithm by the key to sign values, both a public key scheme and associated
 // hashing function.
@@ -55,26 +59,40 @@ func (a Algorithm) String() string {
 	return fmt.Sprintf("Algorithm(0x%x)", int(a))
 }
 
-// AttestationObject holds raw fields parsed from the attestationObject. This
-// Is exported to support external validation of different attestation formats,
-// and can generally be ignored by most package consumers.
-//
-// Standard WebAuthn use cases, which generally don't validate the trust chain of
-// client credentials, should avoid using this type. Use
-// [RelyingParty.VerifyAttestation] instead.
-type AttestationObject struct {
-	// Format of the attestation statement. Specification defined values include
-	// "packed", "tpm", "android-key", "android-safetynet", "fido-u2f", "none",
-	// "apple", and "compound".
-	//
-	// https://www.w3.org/TR/webauthn-3/#sctn-defined-attestation-formats
-	Format string
+// Attestation formats recognized by this package.
+const (
+	// Indicates that the authenticator didn't provide attestation.
+	FormatNone   = "none"
+	FormatPacked = "packed"
+)
 
-	// AttestationStatement is the unparsed attStmt.
-	AttestationStatement []byte
+type attestationObject struct {
+	format string
 
-	// AuthenticatorData is the unparsed authData.
-	AuthenticatorData []byte
+	attestationStatement []byte
+	authData             []byte
+}
+
+// AttestationFormat returns the format purported to be used by the attestation.
+// This can be values such as "packed", "apple", "none", etc.
+func AttestationFormat(attestationObject []byte) (string, error) {
+	d := cbor.NewDecoder(attestationObject)
+	var format string
+	if !d.Map(func(kv *cbor.Decoder) bool {
+		var key string
+		if !kv.String(&key) {
+			return false
+		}
+		switch key {
+		case "fmt":
+			return kv.String(&format)
+		default:
+			return kv.Skip()
+		}
+	}) || !d.Done() {
+		return "", fmt.Errorf("invalid cbor data")
+	}
+	return format, nil
 }
 
 // RelyingParty represents a server that attempts to validate webauthn
@@ -93,10 +111,10 @@ type RelyingParty struct {
 }
 
 // VerifyAttestation validates a credential creation attempt. attestationObject
-// and clientDataJSON arguments correspond directly to the credential response
+// and clientDataJSON arguments coorespond directly to the credential response
 // fields returned during creation. Challenge is the value passed to the creation
 // call used to prevent replay attacks.
-func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*AuthenticatorData, error) {
+func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestationObject []byte) (*Attestation, error) {
 	var clientData clientData
 	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
 		return nil, fmt.Errorf("parsing client data: %v", err)
@@ -116,18 +134,24 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
 
-	data, err := ParseAuthenticatorData(rp.ID, attObj.AuthenticatorData)
+	data, err := parseAuthData(attObj.authData, rp.ID)
 	if err != nil {
 		return nil, fmt.Errorf("parsing authenticator data: %v", err)
 	}
 	return data, nil
 }
 
-// VerifyAttestationObject is like [RelyingParty.VerifyAttestation], but returns
-// an unparsed attestation object, rather than validated authenticator data.
-// This function is exported to support external validation of attestation
-// statements, and shouldn't be used by most consumers.
-func (rp *RelyingParty) VerifyAttestationObject(challenge, clientDataJSON, attestationObject []byte) (*AttestationObject, error) {
+// VerifyAttestationPacked is similar to VerifyAttestation, but additionally
+// performs validation of "packed" attestation statements.
+//
+// Packed attestations are generally supported by physical authenticators, such
+// as security keys, as well as local storage.
+//
+// See [PackedOptions] for details on how to fetch certificate chains used for
+// validation.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attestationObject []byte, opts *PackedOptions) (*Packed, error) {
 	var clientData clientData
 	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
 		return nil, fmt.Errorf("parsing client data: %v", err)
@@ -146,14 +170,19 @@ func (rp *RelyingParty) VerifyAttestationObject(challenge, clientDataJSON, attes
 	if err != nil {
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
-	return attObj, nil
+
+	data, err := attObj.VerifyPacked(rp.ID, clientDataJSON, opts)
+	if err != nil {
+		return nil, fmt.Errorf("parsing authenticator data: %v", err)
+	}
+	return data, nil
 }
 
 // VerifyAssertion validates an authentication assertion. The public key
-// and algorithm should use the [AuthenticatorData] values for the credential.
+// and algorithm should use the [Attestation] values for the credential.
 // The challenge is the value passed to the frontend to sign. authenticatorData,
 // clientDataJSON, and signature should be the values returned by the credential
-// assertion.
+// asserstion.
 func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, challenge, clientDataJSON, authData, sig []byte) (*Assertion, error) {
 	clientDataHash := sha256.Sum256(clientDataJSON)
 
@@ -173,7 +202,7 @@ func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, cha
 
 	data := append([]byte{}, authData...)
 	data = append(data, clientDataHash[:]...)
-	if err := VerifySignature(pub, alg, data, sig); err != nil {
+	if err := verifySignature(pub, alg, data, sig); err != nil {
 		return nil, fmt.Errorf("invalid signature: %v", err)
 	}
 
@@ -199,11 +228,183 @@ func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, cha
 	}, nil
 }
 
-// VerifySignature is a low-level API used to validate raw signatures for a
-// given COSE algorithm. This is exported to support external attestation
-// statement validators. To validate a WebAuthn authentication event, use
-// [RelyingParty.VerifyAssertion] instead.
-func VerifySignature(pub crypto.PublicKey, alg Algorithm, data, sig []byte) error {
+// Format returns the sets of attestation formats.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-defined-attestation-formats
+func (o *attestationObject) Format() string {
+	return o.format
+}
+
+// PackedOptions allows configuration for validating packed attestation
+// statement.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+type PackedOptions struct {
+	// When set, allow packed verifications that are self-attested.
+	//
+	// https://www.w3.org/TR/webauthn-3/#self-attestation
+	AllowSelfAttested bool
+
+	// GetRoots returns the root certificates for a given AAGUID. For example, by
+	// parsing the FIDO Alliance Metadata Service.
+	//
+	// https://fidoalliance.org/metadata/
+	GetRoots func(aaguid AAGUID) (*x509.CertPool, error)
+}
+
+// Packed holds a parsed packed attestation format.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+type Packed struct {
+	// Parsed and validated authenticator data.
+	AttestationData *Attestation
+
+	// If true, the data was self attested and signed with the key returned in
+	// authenticator data, rather than an attestation certificate.
+	//
+	// https://www.w3.org/TR/webauthn-3/#self-attestation
+	SelfAttested bool
+
+	// AttestationCertificate is the per-device certificate that was used to
+	// sign the attestation and chains up to a root certificate within the
+	// configuration.
+	//
+	// https://www.w3.org/TR/webauthn-3/#attca
+	AttestationCertificate *x509.Certificate
+}
+
+// VerifyPacked validates an attestation object and client JSON data against
+// a packed signature.
+//
+// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opts *PackedOptions) (*Packed, error) {
+	if opts == nil {
+		return nil, fmt.Errorf("options must be provided")
+	}
+	if !opts.AllowSelfAttested && opts.GetRoots == nil {
+		return nil, fmt.Errorf("self attested not allowed and no root certificates provided")
+	}
+
+	p, err := parsePacked(o.attestationStatement)
+	if err != nil {
+		return nil, fmt.Errorf("invalid attestation statement: %v", err)
+	}
+	ad, err := parseAuthData(o.authData, rpid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid auth data: %v", err)
+	}
+
+	// https://www.w3.org/TR/webauthn-3/#collectedclientdata-hash-of-the-serialized-client-data
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	data := append([]byte{}, o.authData...)
+	data = append(data, clientDataHash[:]...)
+
+	if len(p.x5c) == 0 {
+		if !opts.AllowSelfAttested {
+			return nil, fmt.Errorf("attestation statement is self attested, which is not permitted by packed validation config")
+		}
+
+		// "If self attestation is in use, the authenticator produces sig by
+		// concatenating authenticatorData and clientDataHash, and signing the
+		// result using the credential private key. It sets alg to the
+		// algorithm of the credential private key and omits the other fields.""
+		//
+		// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+		if err := verifySignature(ad.PublicKey, ad.Algorithm, data, p.sig); err != nil {
+			return nil, fmt.Errorf("verifying self-attested data: %v", err)
+		}
+		return &Packed{
+			AttestationData: ad,
+			SelfAttested:    true,
+		}, nil
+	}
+
+	var x5c []*x509.Certificate
+	for _, rawCert := range p.x5c {
+		cert, err := x509.ParseCertificate(rawCert)
+		if err != nil {
+			return nil, fmt.Errorf("invalid certificate: %v", err)
+		}
+		x5c = append(x5c, cert)
+	}
+
+	// "Verify that sig is a valid signature over the concatenation of
+	// authenticatorData and clientDataHash using the attestation public key in
+	// attestnCert with the algorithm specified in alg."
+
+	attCert := x5c[0]
+
+	pub := attCert.PublicKey
+	if err := verifySignature(pub, Algorithm(p.alg), data, p.sig); err != nil {
+		return nil, fmt.Errorf("verifying with attestation certificate: %v", err)
+	}
+
+	// "Verify that attestnCert meets the requirements in § 8.2.1 Packed
+	// Attestation Statement Certificate Requirements."
+	//
+	// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation-cert-requirements
+
+	if attCert.Version != 3 {
+		// Version MUST be set to 3 (which is indicated by an ASN.1 INTEGER with value 2).
+		return nil, fmt.Errorf("attestation certificate uses version %d, must be version 3", attCert.Version)
+	}
+
+	ou := attCert.Subject.OrganizationalUnit
+	if len(ou) != 1 || ou[0] != "Authenticator Attestation" {
+		return nil, fmt.Errorf("attestation certificate Subject-OU must be set to the string 'Authenticator Attestation': %s", ou)
+	}
+	if attCert.IsCA {
+		return nil, fmt.Errorf("attestation certificate basic constraints CA value must be set to false")
+	}
+
+	var aaguidExt []byte
+	for _, ext := range attCert.Extensions {
+		if ext.Id.Equal(idFIDOGenCEAAGUIDOID) {
+			aaguidExt = ext.Value
+			break
+		}
+	}
+	if len(aaguidExt) == 0 {
+		return nil, fmt.Errorf("no id-fido-gen-ce-aaguid extension in attestation certifiate")
+	}
+	var aaguidRaw []byte
+	if _, err := asn1.Unmarshal(aaguidExt, &aaguidRaw); err != nil {
+		return nil, fmt.Errorf("failed to parse id-fido-gen-ce-aaguid extension in attestation certifiate: %v", err)
+	}
+	if len(aaguidRaw) != 16 {
+		return nil, fmt.Errorf("expected id-fido-gen-ce-aaguid extension to be a 16 byte value, got %d", len(aaguidRaw))
+	}
+	var aaguid AAGUID
+	copy(aaguid[:], aaguidRaw[:])
+
+	if aaguid != ad.AAGUID {
+		return nil, fmt.Errorf("authenticator data aaguid (%s) doesn't match packed certificate aaguid (%s)", ad.AAGUID, aaguid)
+	}
+
+	roots, err := opts.GetRoots(aaguid)
+	if err != nil {
+		return nil, err
+	}
+
+	v := x509.VerifyOptions{
+		Roots: roots,
+	}
+	if len(x5c) > 1 {
+		v.Intermediates = x509.NewCertPool()
+		for _, cert := range x5c[1:] {
+			v.Intermediates.AddCert(cert)
+		}
+	}
+	if _, err := attCert.Verify(v); err != nil {
+		return nil, fmt.Errorf("failed to verify attestation certificate for provider %s: %v", aaguid, err)
+	}
+	return &Packed{
+		AttestationData:        ad,
+		AttestationCertificate: attCert,
+	}, nil
+}
+
+func verifySignature(pub crypto.PublicKey, alg Algorithm, data, sig []byte) error {
 	switch alg {
 	case ES256:
 		ecdsaPub, ok := pub.(*ecdsa.PublicKey)
@@ -386,13 +587,13 @@ type Assertion struct {
 	Counter uint32
 }
 
-// AuthenticatorData holds information about an individual credential. This data is
+// Attestation holds information about an individual credential. This data is
 // provided by the browser within the context of the origin registering the
 // key. In some circumstances, can be attested to be resident on a physical
 // security key or device.
 //
 // https://www.w3.org/TR/webauthn-3/#authenticator-data
-type AuthenticatorData struct {
+type Attestation struct {
 	// Various bits of information about this key, such as if it is synced to a
 	// Cloud service.
 	//
@@ -437,6 +638,8 @@ type AuthenticatorData struct {
 	Extensions []byte
 }
 
+// https://developers.yubico.com/FIDO/yubico-metadata.json
+
 // parseAttestationObject parses the result of a key creation event. This
 // includes information such as the public key, key ID, RP ID hash, etc.
 //
@@ -448,7 +651,7 @@ type AuthenticatorData struct {
 //	console.log(cred.response.attestationObject);
 //
 // https://www.w3.org/TR/webauthn-3/#attestation-object
-func parseAttestationObject(b []byte) (*AttestationObject, error) {
+func parseAttestationObject(b []byte) (*attestationObject, error) {
 	d := cbor.NewDecoder(b)
 	var (
 		format   string
@@ -476,26 +679,67 @@ func parseAttestationObject(b []byte) (*AttestationObject, error) {
 	if len(authData) == 0 {
 		return nil, fmt.Errorf("no auth data")
 	}
-	return &AttestationObject{
-		Format:               format,
-		AttestationStatement: attest,
-		AuthenticatorData:    authData,
+	return &attestationObject{
+		format:               format,
+		attestationStatement: attest,
+		authData:             authData,
 	}, nil
 }
 
-// ParseAuthenticatorData parses authData into its various fields.  This
-// function is exported to support external validation of attestation
-// statements. Most package consumers should derive a AuthenticatorData from
-// [RelyingParty.VerifyAttestation] instead
-func ParseAuthenticatorData(rpID string, b []byte) (*AuthenticatorData, error) {
-	var ad AuthenticatorData
+type packed struct {
+	alg int64
+	sig []byte
+	x5c [][]byte
+}
+
+// https://www.w3.org/TR/webauthn-3/#sctn-packed-attestation
+func parsePacked(b []byte) (*packed, error) {
+	d := cbor.NewDecoder(b)
+	p := &packed{}
+	ok := d.Map(func(kv *cbor.Decoder) bool {
+		var key string
+		if !kv.String(&key) {
+			return false
+		}
+		switch key {
+		case "alg":
+			return kv.Int(&p.alg)
+		case "sig":
+			return kv.Bytes(&p.sig)
+		case "x5c":
+			return kv.Array(func(d *cbor.Decoder) bool {
+				var cert []byte
+				if !d.Bytes(&cert) {
+					return false
+				}
+				p.x5c = append(p.x5c, cert)
+				return true
+			})
+		default:
+			return kv.Skip()
+		}
+	}) && d.Done()
+	if !ok {
+		return nil, fmt.Errorf("attestation statement was not valid cbor")
+	}
+	if p.alg == 0 {
+		return nil, fmt.Errorf("attestation statement didn't specify an algorithm")
+	}
+	if len(p.sig) == 0 {
+		return nil, fmt.Errorf("attestation statement didn't contain a signature")
+	}
+	return p, nil
+}
+
+func parseAuthData(b []byte, rpid string) (*Attestation, error) {
+	var ad Attestation
 	if len(b) < 32 {
 		return nil, fmt.Errorf("not enough bytes for rpid hash")
 	}
 
 	var rpidHash [32]byte
 	copy(rpidHash[:], b[:32])
-	wantRPID := sha256.Sum256([]byte(rpID))
+	wantRPID := sha256.Sum256([]byte(rpid))
 	if wantRPID != rpidHash {
 		return nil, fmt.Errorf("authenticator data doesn't match relying party ID")
 	}
