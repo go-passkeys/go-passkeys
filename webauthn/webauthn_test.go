@@ -74,6 +74,17 @@ func TestVerifyAttestation(t *testing.T) {
 			format:            "packed",
 			attestationObject: "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZzkBAGNzaWdZAQAaCqFz8ek8XbD8lBu8js7/kfKisOeBG0Dp0/4D+bJlFl8mofb4K5TAlA8QB6S0CRsIikInzmo4dVf+6P+gx08UQPTU+N2pNY6RNxYBz5rwjnCXvdBKNzyP+6jWK8H7nQJWJeITKWbbTWOXdTEmt0+czJ04pPRXYb/8WI5cX65nQk3VfQXnNWGGzvQcnPDV+Vj3obvJZ2aywlSG8AMTYVbBCNQGRjsF3Il5B1QmwxCRLpvsvnmyHlka2MM+/dFN5r3ONkD0T2L6FGks/bZk1TH6yrr8VI7jNIJAuonYVioDW3DmBp99Yn1EJIjbVpjmIXaAgSiUYV9b1o6VLlym0EW6aGF1dGhEYXRhWQFnSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NFAAAAAGAosBex1EwCtLOvza/Ja7IAIHPIhKxhmUbiZ+76TWfCemrQU1bsWR/RvYfj09xWezIzpAEDAzkBACBZAQDSGOSMe/AilnIgiUOFnSKwoT9lSi/REdIVxW6XuGv+2su0XKVrw5oNwChwb5ES04EASAtqp6jHMVFBfhPiWMBPEBRGggpDEkHIbZoMXvrvgmrxerrO0UpTppbEQq6+S/lice1Veq81SucvQ+MhINF3JyXPtmbQuPQmRSmifkQVwIt7RVivEiH7RlJfZ/racZYewo1h01DeNIzfEaEyJFV0hFSMskrbHR8wn6zFT4dTSSm2KZ0YFVqNgIygloig5n7IlQTvVshpHXWAmY89Z9GaXUiw3Ctu6ILrrH9HHc8SCEP7LkaJLgbiH16qLnReWtAAw56emHAZt8D0YrxB9wAtIUMBAAE=",
 		},
+		{
+			name: "Windows Hello 2",
+			rp: &RelyingParty{
+				ID:     "localhost",
+				Origin: "http://localhost:8080",
+			},
+			challenge:         "mmReNMVGp4iez09c3fQSYA",
+			clientData:        `{"type":"webauthn.create","challenge":"mmReNMVGp4iez09c3fQSYA","origin":"http://localhost:8080","crossOrigin":false}`,
+			format:            "packed",
+			attestationObject: "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZzkBAGNzaWdZAQBHNa1UX17fq+Q4cFC82tcFITnjFhDq0l2DWjXGlhXupyOFHxeJdYKMW/CYxyD2mECIGyy/qnUSaBsKd5O51/lTt9Tiz7CI2izQkid7Z9MACuXOEYHjTWQQZZWR59V8eDnvWxBv/TTlb1wQC/nvsQ42QbQfsWJjyv3jSfMgMzdRBLCoFzae3/OcqFguXxJnkcydjbQdIarkenmkswt3pq4MFk9v8qVJmhlsVdgQwBup0tKu9hMk0GYCWiD8u40onZBB2N4aAU0uUQ/C4gfEQe/UqgswEKEdi9Z5FHPw1rDgLHIsj60CVWm0fbnhhBYW21GdMzGnUUI4igiIkt3hcwy2aGF1dGhEYXRhWQFnSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NFAAAAAGAosBex1EwCtLOvza/Ja7IAICt0Tt4jQh33H9EnYb5DCO9/oBxi4SAIxQvOhrB4VJespAEDAzkBACBZAQC016I5R96l+4s8Aph61BZBECMn2ILZMcW2GpAqjCbMW8h5kFgsKJMuHCtq+S8f5Q5jWZYg6kLYNPdKsicNR0mJ7uV36gyL5uIogZEWzDzmhpU7P9PuuxAzKkm+1gzMYTpgwlwrXQujf4/Wcgi/dL4Jlg1QDvu8I4RRdJLDAOXNK328IaoTPwqIekubQ/5Q2VI6CyzLWeVoBILfjGUEow59IyXM6K8ko7jqsew+t9fQGj9tjBT+pdcK/8phH2wVBLUz4t5EwP3gzOOQIOckSl5aFgRQgt3Spi/odqpzcOqUm59tUmpd75XGbwGkez0r22as5PLGGNMSQMpi79+zgQ7lIUMBAAE=",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,6 +138,26 @@ func TestVerifyAttestationPacked(t *testing.T) {
 			challenge:         "8XJI5cQqW-VqtSPO7JIpUg",
 			clientData:        `{"type":"webauthn.create","challenge":"8XJI5cQqW-VqtSPO7JIpUg","origin":"http://localhost:8080","crossOrigin":false}`,
 			attestationObject: "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZyZjc2lnWEcwRQIhAJdhPjKXQAoWBgBDw+tu8q2WpTrXLULwFBgpJGu0SLI7AiA493f+tIVJkf9oeSX24FsSHJqkNKYmph2IAD7wSzTMAGhhdXRoRGF0YVikSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NFAAAAAK3OAAI1vMYKZIsLJfHwVQMAIGfNA5n4RSq0gsGzIB6kmazzLLe0goRP+1QG4uixw+zTpQECAyYgASFYIJtUv3C9FxTn1i7xALbGQJjzDkyFECHaHQ5+KYom9eh9IlggCfXDLnVZU9KEKuhqdPInGHcfAlZSCTOeRWSUzrSkkHo=",
+		},
+		{
+			name: "Windows Hello",
+			rp: &RelyingParty{
+				ID:     "localhost",
+				Origin: "http://localhost:8080",
+			},
+			challenge:         "eGEQa0gDgC1kZkok4C3iLg",
+			clientData:        `{"type":"webauthn.create","challenge":"eGEQa0gDgC1kZkok4C3iLg","origin":"http://localhost:8080","crossOrigin":false,"other_keys_can_be_added_here":"do not compare clientDataJSON against a template. See https://goo.gl/yabPex"}`,
+			attestationObject: "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZzkBAGNzaWdZAQAaCqFz8ek8XbD8lBu8js7/kfKisOeBG0Dp0/4D+bJlFl8mofb4K5TAlA8QB6S0CRsIikInzmo4dVf+6P+gx08UQPTU+N2pNY6RNxYBz5rwjnCXvdBKNzyP+6jWK8H7nQJWJeITKWbbTWOXdTEmt0+czJ04pPRXYb/8WI5cX65nQk3VfQXnNWGGzvQcnPDV+Vj3obvJZ2aywlSG8AMTYVbBCNQGRjsF3Il5B1QmwxCRLpvsvnmyHlka2MM+/dFN5r3ONkD0T2L6FGks/bZk1TH6yrr8VI7jNIJAuonYVioDW3DmBp99Yn1EJIjbVpjmIXaAgSiUYV9b1o6VLlym0EW6aGF1dGhEYXRhWQFnSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NFAAAAAGAosBex1EwCtLOvza/Ja7IAIHPIhKxhmUbiZ+76TWfCemrQU1bsWR/RvYfj09xWezIzpAEDAzkBACBZAQDSGOSMe/AilnIgiUOFnSKwoT9lSi/REdIVxW6XuGv+2su0XKVrw5oNwChwb5ES04EASAtqp6jHMVFBfhPiWMBPEBRGggpDEkHIbZoMXvrvgmrxerrO0UpTppbEQq6+S/lice1Veq81SucvQ+MhINF3JyXPtmbQuPQmRSmifkQVwIt7RVivEiH7RlJfZ/racZYewo1h01DeNIzfEaEyJFV0hFSMskrbHR8wn6zFT4dTSSm2KZ0YFVqNgIygloig5n7IlQTvVshpHXWAmY89Z9GaXUiw3Ctu6ILrrH9HHc8SCEP7LkaJLgbiH16qLnReWtAAw56emHAZt8D0YrxB9wAtIUMBAAE=",
+		},
+		{
+			name: "Windows Hello 2",
+			rp: &RelyingParty{
+				ID:     "localhost",
+				Origin: "http://localhost:8080",
+			},
+			challenge:         "mmReNMVGp4iez09c3fQSYA",
+			clientData:        `{"type":"webauthn.create","challenge":"mmReNMVGp4iez09c3fQSYA","origin":"http://localhost:8080","crossOrigin":false}`,
+			attestationObject: "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZzkBAGNzaWdZAQBHNa1UX17fq+Q4cFC82tcFITnjFhDq0l2DWjXGlhXupyOFHxeJdYKMW/CYxyD2mECIGyy/qnUSaBsKd5O51/lTt9Tiz7CI2izQkid7Z9MACuXOEYHjTWQQZZWR59V8eDnvWxBv/TTlb1wQC/nvsQ42QbQfsWJjyv3jSfMgMzdRBLCoFzae3/OcqFguXxJnkcydjbQdIarkenmkswt3pq4MFk9v8qVJmhlsVdgQwBup0tKu9hMk0GYCWiD8u40onZBB2N4aAU0uUQ/C4gfEQe/UqgswEKEdi9Z5FHPw1rDgLHIsj60CVWm0fbnhhBYW21GdMzGnUUI4igiIkt3hcwy2aGF1dGhEYXRhWQFnSZYN5YgOjGh0NBcPZHZgW4/krrmihjLHmVzzuoMdl2NFAAAAAGAosBex1EwCtLOvza/Ja7IAICt0Tt4jQh33H9EnYb5DCO9/oBxi4SAIxQvOhrB4VJespAEDAzkBACBZAQC016I5R96l+4s8Aph61BZBECMn2ILZMcW2GpAqjCbMW8h5kFgsKJMuHCtq+S8f5Q5jWZYg6kLYNPdKsicNR0mJ7uV36gyL5uIogZEWzDzmhpU7P9PuuxAzKkm+1gzMYTpgwlwrXQujf4/Wcgi/dL4Jlg1QDvu8I4RRdJLDAOXNK328IaoTPwqIekubQ/5Q2VI6CyzLWeVoBILfjGUEow59IyXM6K8ko7jqsew+t9fQGj9tjBT+pdcK/8phH2wVBLUz4t5EwP3gzOOQIOckSl5aFgRQgt3Spi/odqpzcOqUm59tUmpd75XGbwGkez0r22as5PLGGNMSQMpi79+zgQ7lIUMBAAE=",
 		},
 	}
 
