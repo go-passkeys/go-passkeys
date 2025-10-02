@@ -3,7 +3,9 @@
 // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ctap2-canonical-cbor-encoding-form
 package cbor
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+)
 
 type Decoder struct {
 	pos  int
@@ -230,7 +232,7 @@ func (d *Decoder) Peek() byte {
 	if d.len() == 0 {
 		return 0xff
 	}
-	return d.buff[0] << 5
+	return d.buff[d.len()-1] >> 5
 }
 
 func (d *Decoder) Array(fn func(val *Decoder) bool) bool {
