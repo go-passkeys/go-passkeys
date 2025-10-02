@@ -5,7 +5,7 @@ function err(text) {
   ele.style.visibility = "visible";
 }
 
-window.addEventListener("load", (event) => {
+window.addEventListener("load", (_) => {
 	Array.from(document.getElementsByClassName("registered_at")).map((el) => {
 		const val = parseInt(el.getAttribute("value"));
 		const date = new Date(val);
@@ -13,7 +13,7 @@ window.addEventListener("load", (event) => {
 	});
 });
 
-window.addEventListener("load", (event) => {
+window.addEventListener("load", (_) => {
 	Array.from(document.getElementsByClassName("passkey-menu")).map((el) => {
 		el.addEventListener("click", (event) => {
 			const menu = event.srcElement;
@@ -24,22 +24,22 @@ window.addEventListener("load", (event) => {
 	});
 });
 
-window.addEventListener("load", (event) => {
+window.addEventListener("load", (_) => {
 	const addkeyMore = document.getElementById("addkey-more");
 	if (addkeyMore === null) {
 		return;
 	}
-	addkeyMore.addEventListener("click", (event) => {
+	addkeyMore.addEventListener("click", (_) => {
 		document.getElementById("addkey-info").classList.toggle("expanded");
 	});
 });
 
-window.addEventListener("load", (event) => {
+window.addEventListener("load", (_) => {
 	const reauthMore = document.getElementById("reauth-more");
 	if (reauthMore === null) {
 		return;
 	}
-	reauthMore.addEventListener("click", (event) => {
+	reauthMore.addEventListener("click", (_) => {
 		document.getElementById("reauth-info").classList.toggle("expanded");
 	});
 });
@@ -132,8 +132,8 @@ window.appRegister = async function() {
                 clientDataJSON: clientDataJSON,
             }),
         });
-        if (!resp.ok) {
-            err(await resp.text());
+        if (!finishResp.ok) {
+            err(await finishResp.text());
             return;
         }
 		window.location.herf = "/";
@@ -279,7 +279,6 @@ window.appRegisterKey = async function() {
 
         const body = await resp.json();
         const challenge = Uint8Array.from(atob(body.challenge), c => c.charCodeAt(0));
-        const credID = Uint8Array.from(atob(body.credentialID), c => c.charCodeAt(0));
         const userID = Uint8Array.from(atob(body.userID), c => c.charCodeAt(0));
 		const creds = body.credentialIDs.map((credID) => {
 			return {
@@ -341,8 +340,8 @@ window.appRegisterKey = async function() {
                 clientDataJSON: clientDataJSON,
             }),
         });
-        if (!resp.ok) {
-            err(await resp.text());
+        if (!finishResp.ok) {
+            err(await finishResp.text());
             return;
         }
 		window.location.herf = "/";
