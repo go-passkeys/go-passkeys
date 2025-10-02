@@ -232,7 +232,7 @@ func (d *Decoder) Peek() byte {
 	if d.len() == 0 {
 		return 0xff
 	}
-	return d.buff[d.len()-1] >> 5
+	return d.buff[d.pos] >> 5
 }
 
 func (d *Decoder) Array(fn func(val *Decoder) bool) bool {
