@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-passkeys/go-passkeys/webauthn"
 
-	_ "github.com/mattn/go-sqlite3" // Register driver.
+	_ "modernc.org/sqlite" // Register driver.
 )
 
 var schema = `
@@ -131,7 +131,7 @@ type storage struct {
 //
 // Callers are expected to call Close() on the returned storage object.
 func newStorage(ctx context.Context, path string) (*storage, error) {
-	db, err := sql.Open("sqlite3", "file:"+path)
+	db, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		return nil, fmt.Errorf("opening db: %v", err)
 	}
