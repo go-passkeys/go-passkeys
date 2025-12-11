@@ -281,3 +281,29 @@ func TestSkipTruncatedByteString(t *testing.T) {
 		t.Fatalf("Skip succeeded on truncated byte string")
 	}
 }
+
+func TestBytesLengthOverflow(t *testing.T) {
+	d := NewDecoder([]byte{0x5b, 0x80, 0, 0, 0, 0, 0, 0, 0, 0})
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Bytes panicked on oversized length: %v", r)
+		}
+	}()
+	var b []byte
+	if d.Bytes(&b) {
+		t.Fatalf("Bytes unexpectedly succeeded on oversized length")
+	}
+}
+
+func TestStringLengthOverflow(t *testing.T) {
+	d := NewDecoder([]byte{0x7b, 0x80, 0, 0, 0, 0, 0, 0, 0, 0})
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("String panicked on oversized length: %v", r)
+		}
+	}()
+	var s string
+	if d.String(&s) {
+		t.Fatalf("String unexpectedly succeeded on oversized length")
+	}
+}
