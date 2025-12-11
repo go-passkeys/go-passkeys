@@ -164,7 +164,7 @@ func (d *Decoder) Skip() bool {
 		// argument.
 	case TypeByteString, TypeTextString:
 		// For strings, consume the length of the value.
-		if len(d.buff) < int(arg) {
+		if arg > uint64(d.len()) {
 			return false
 		}
 		d.bytes(int(arg))
