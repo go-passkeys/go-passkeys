@@ -60,7 +60,7 @@ func (d *Decoder) Bytes(b *[]byte) bool {
 	if typ != TypeByteString {
 		return false
 	}
-	if d.len() < int(arg) {
+	if arg > uint64(d.len()) {
 		return false
 	}
 	*b = append([]byte{}, d.bytes(int(arg))...)
@@ -75,7 +75,7 @@ func (d *Decoder) String(s *string) bool {
 	if typ != TypeTextString {
 		return false
 	}
-	if d.len() < int(arg) {
+	if arg > uint64(d.len()) {
 		return false
 	}
 	*s = string(d.bytes(int(arg)))
