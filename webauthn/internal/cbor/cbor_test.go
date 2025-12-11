@@ -269,3 +269,15 @@ func TestSkip(t *testing.T) {
 		}
 	}
 }
+
+func TestSkipTruncatedByteString(t *testing.T) {
+	d := NewDecoder([]byte{0x42, 0x00})
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Skip panicked on truncated byte string: %v", r)
+		}
+	}()
+	if d.Skip() {
+		t.Fatalf("Skip succeeded on truncated byte string")
+	}
+}
