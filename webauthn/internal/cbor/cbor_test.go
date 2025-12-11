@@ -202,7 +202,7 @@ func TestBool(t *testing.T) {
 	}
 
 	df := NewDecoder(dataFalse)
-	if !df.Bool(&gotFalse) || !dt.Done() {
+	if !df.Bool(&gotFalse) || !df.Done() {
 		t.Errorf("Failed to parse 'false' value")
 	}
 	if gotFalse != false {
