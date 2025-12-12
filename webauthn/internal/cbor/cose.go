@@ -25,7 +25,10 @@ const (
 	RS512 = -259
 	RS384 = -258
 	RS256 = -257
+	ES512 = -36
+	ES384 = -35
 	ES256 = -7
+	EdDSA = -8
 )
 
 const (
@@ -94,10 +97,19 @@ func (d *Decoder) PublicKey() (*PublicKey, error) {
 		var curve elliptic.Curve
 		switch ecID {
 		case ecP256:
+			if alg != ES256 {
+				return nil, fmt.Errorf("algorithm %d does not match P-256 curve", alg)
+			}
 			curve = elliptic.P256()
 		case ecP384:
+			if alg != ES384 {
+				return nil, fmt.Errorf("algorithm %d does not match P-384 curve", alg)
+			}
 			curve = elliptic.P384()
 		case ecP521:
+			if alg != ES512 {
+				return nil, fmt.Errorf("algorithm %d does not match P-521 curve", alg)
+			}
 			curve = elliptic.P521()
 		default:
 			return nil, fmt.Errorf("unsupported curve id: %d", ecID)
@@ -111,6 +123,11 @@ func (d *Decoder) PublicKey() (*PublicKey, error) {
 			Y:     y,
 		}
 	case keyTypeRSA:
+		switch alg {
+		case RS256, RS384, RS512:
+		default:
+			return nil, fmt.Errorf("unsupported algorithm %d for RSA key", alg)
+		}
 		if len(n1) == 0 {
 			return nil, fmt.Errorf("no modulus n for RSA key")
 		}
@@ -119,8 +136,14 @@ func (d *Decoder) PublicKey() (*PublicKey, error) {
 		}
 		n := big.NewInt(0).SetBytes(n1)
 		e := big.NewInt(0).SetBytes(n2)
+		if e.BitLen() > 31 {
+			return nil, fmt.Errorf("RSA public exponent too big")
+		}
 		pub = &rsa.PublicKey{N: n, E: int(e.Int64())}
 	case keyTypeOKP:
+		if alg != EdDSA {
+			return nil, fmt.Errorf("unsupported algorithm %d for OKP key", alg)
+		}
 		if ecID != ecEd25519 {
 			return nil, fmt.Errorf("unsupported elliptic curve type %d for octet key pair", ecID)
 		}
