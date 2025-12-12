@@ -437,11 +437,11 @@ func verifySignature(pub crypto.PublicKey, alg Algorithm, data, sig []byte) erro
 			return fmt.Errorf("invalid ES512 signature")
 		}
 	case EdDSA:
-		ed25519Pub, ok := pub.(*ed25519.PublicKey)
+		ed25519Pub, ok := pub.(ed25519.PublicKey)
 		if !ok {
 			return fmt.Errorf("invalid public key type for EdDSA algorithm: %T", pub)
 		}
-		if !ed25519.Verify(*ed25519Pub, data, sig) {
+		if !ed25519.Verify(ed25519Pub, data, sig) {
 			return fmt.Errorf("invalid EdDSA signature")
 		}
 	case RS256:
