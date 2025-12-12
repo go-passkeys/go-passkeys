@@ -304,6 +304,11 @@ func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opt
 			return nil, fmt.Errorf("attestation statement is self attested, which is not permitted by packed validation config")
 		}
 
+		// "Validate that alg matches the algorithm of the credentialPublicKey in authenticatorData."
+		if Algorithm(p.alg) != ad.Algorithm {
+			return nil, fmt.Errorf("attestation algorithm %v doesn't match credential algorithm %v", Algorithm(p.alg), ad.Algorithm)
+		}
+
 		// "If self attestation is in use, the authenticator produces sig by
 		// concatenating authenticatorData and clientDataHash, and signing the
 		// result using the credential private key. It sets alg to the
