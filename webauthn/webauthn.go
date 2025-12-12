@@ -122,6 +122,9 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 	if clientData.Type != "webauthn.create" {
 		return nil, fmt.Errorf("invalid client data type, expected 'webauthn.create', got '%s'", clientData.Type)
 	}
+	if clientData.CrossOrigin {
+		return nil, fmt.Errorf("cross-origin attestation is not allowed")
+	}
 	if clientData.Origin != rp.Origin {
 		return nil, fmt.Errorf("invalid client data origin, expected '%s', got '%s'", rp.Origin, clientData.Origin)
 	}
@@ -159,6 +162,9 @@ func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attes
 	if clientData.Type != "webauthn.create" {
 		return nil, fmt.Errorf("invalid client data type, expected 'webauthn.create', got '%s'", clientData.Type)
 	}
+	if clientData.CrossOrigin {
+		return nil, fmt.Errorf("cross-origin attestation is not allowed")
+	}
 	if clientData.Origin != rp.Origin {
 		return nil, fmt.Errorf("invalid client data origin, expected '%s', got '%s'", rp.Origin, clientData.Origin)
 	}
@@ -192,6 +198,9 @@ func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, cha
 	}
 	if clientData.Type != "webauthn.get" {
 		return nil, fmt.Errorf("invalid client data type, expected 'webauthn.get', got '%s'", clientData.Type)
+	}
+	if clientData.CrossOrigin {
+		return nil, fmt.Errorf("cross-origin assertions are not allowed")
 	}
 	if clientData.Origin != rp.Origin {
 		return nil, fmt.Errorf("invalid client data origin, expected '%s', got '%s'", rp.Origin, clientData.Origin)
