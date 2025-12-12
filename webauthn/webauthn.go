@@ -749,7 +749,11 @@ func parseAuthData(b []byte, rpid string) (*Attestation, error) {
 		return nil, fmt.Errorf("not enough bytes for flag")
 	}
 	ad.Flags = Flags(b[0])
+	if !ad.Flags.AttestedCredentialData() {
+		return nil, fmt.Errorf("attested credential data flag not set")
+	}
 	b = b[1:]
+
 	if len(b) < 4 {
 		return nil, fmt.Errorf("not enough bytes for counter")
 	}
