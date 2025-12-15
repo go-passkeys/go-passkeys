@@ -785,6 +785,9 @@ func parseAuthData(b []byte, rpid string) (*Attestation, error) {
 		return nil, fmt.Errorf("not enough bytes for cred ID length")
 	}
 	credIDSize := binary.BigEndian.Uint16(b[:2])
+	if credIDSize > 1023 {
+		return nil, fmt.Errorf("credential ID length %d exceeds 1023 bytes", credIDSize)
+	}
 	b = b[2:]
 
 	size := int(credIDSize)
