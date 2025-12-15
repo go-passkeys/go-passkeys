@@ -290,9 +290,6 @@ func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opt
 	if opts == nil {
 		return nil, fmt.Errorf("options must be provided")
 	}
-	if !opts.AllowSelfAttested && opts.GetRoots == nil {
-		return nil, fmt.Errorf("self attested not allowed and no root certificates provided")
-	}
 
 	p, err := parsePacked(o.attestationStatement)
 	if err != nil {
@@ -331,6 +328,10 @@ func (o *attestationObject) VerifyPacked(rpid string, clientDataJSON []byte, opt
 			AttestationData: ad,
 			SelfAttested:    true,
 		}, nil
+	}
+
+	if opts.GetRoots == nil {
+		return nil, fmt.Errorf("packed attestation contains attestation certificate, but no root certificates provided")
 	}
 
 	var x5c []*x509.Certificate
