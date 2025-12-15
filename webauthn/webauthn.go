@@ -229,6 +229,9 @@ func (rp *RelyingParty) VerifyAssertion(pub crypto.PublicKey, alg Algorithm, cha
 	if len(authData) < 32+1+4 {
 		return nil, fmt.Errorf("not enough bytes for counter")
 	}
+	if !flags.UserPresent() {
+		return nil, fmt.Errorf("assertion with no user presence")
+	}
 
 	counter := binary.BigEndian.Uint32(authData[32+1 : 32+1+4])
 	return &Assertion{
