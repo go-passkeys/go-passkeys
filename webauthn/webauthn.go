@@ -136,6 +136,9 @@ func (rp *RelyingParty) VerifyAttestation(challenge, clientDataJSON, attestation
 	if err != nil {
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
 	}
+	if attObj.format != FormatNone && attObj.format != FormatPacked {
+		return nil, fmt.Errorf("unsupported attestation format %q", attObj.format)
+	}
 
 	data, err := parseAuthData(attObj.authData, rp.ID)
 	if err != nil {
@@ -175,6 +178,9 @@ func (rp *RelyingParty) VerifyAttestationPacked(challenge, clientDataJSON, attes
 	attObj, err := parseAttestationObject(attestationObject)
 	if err != nil {
 		return nil, fmt.Errorf("parsing attestation object: %v", err)
+	}
+	if attObj.format != FormatPacked {
+		return nil, fmt.Errorf("invalid attestation format %q, expected %q", attObj.format, FormatPacked)
 	}
 
 	data, err := attObj.VerifyPacked(rp.ID, clientDataJSON, opts)
